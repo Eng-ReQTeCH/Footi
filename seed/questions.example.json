@@ -1,0 +1,122 @@
+[
+  {
+    "type": "multiple_choice",
+    "question": "Which country won the 2022 FIFA World Cup?",
+    "answer": {
+      "options": ["Brazil", "France", "Argentina", "Germany"],
+      "correct": 2
+    },
+    "category": "World Cup",
+    "difficulty": "easy"
+  },
+  {
+    "type": "multiple_choice",
+    "question": "How many FIFA World Cups has Brazil won?",
+    "answer": {
+      "options": ["3", "4", "5", "6"],
+      "correct": 2
+    },
+    "category": "World Cup",
+    "difficulty": "easy"
+  },
+  {
+    "type": "multiple_choice",
+    "question": "Which club won the 2023-24 UEFA Champions League?",
+    "answer": {
+      "options": ["Manchester City", "Real Madrid", "Bayern Munich", "PSG"],
+      "correct": 1
+    },
+    "category": "Champions League",
+    "difficulty": "easy"
+  },
+  {
+    "type": "multiple_choice",
+    "question": "Which English club won the 2023-24 Premier League title?",
+    "answer": {
+      "options": ["Arsenal", "Liverpool", "Manchester City", "Chelsea"],
+      "correct": 2
+    },
+    "category": "Premier League",
+    "difficulty": "easy"
+  },
+  {
+    "type": "multiple_choice",
+    "question": "Who won the Ballon d'Or 2023?",
+    "answer": {
+      "options": ["Erling Haaland", "Kylian Mbappe", "Lionel Messi", "Kevin De Bruyne"],
+      "correct": 2
+    },
+    "category": "Ballon d'Or",
+    "difficulty": "medium"
+  },
+  {
+    "type": "bid",
+    "question": "Name as many winners of the UEFA Champions League as you can",
+    "answer": {
+      "suggestions": [
+        "Real Madrid", "AC Milan", "Liverpool", "Bayern Munich", "Barcelona",
+        "Ajax", "Manchester United", "Juventus", "Inter", "Benfica",
+        "Nottingham Forest", "Porto", "Celtic", "Marseille", "Chelsea",
+        "Borussia Dortmund", "Hamburg", "Steaua Bucharest", "PSV", "Red Star Belgrade"
+      ]
+    },
+    "category": "Champions League",
+    "difficulty": "medium"
+  },
+  {
+    "type": "bid",
+    "question": "Name as many Ballon d'Or winners as you can",
+    "answer": {
+      "suggestions": [
+        "Lionel Messi", "Cristiano Ronaldo", "Michel Platini", "Marco van Basten",
+        "Johan Cruyff", "Franz Beckenbauer", "Alfredo Di Stefano", "Ronaldo",
+        "Zinedine Zidane", "Ronaldinho", "Kaka", "Rivaldo", "Luis Figo",
+        "Roberto Baggio", "Matthias Sammer", "Papin", "Matthaus", "George Weah",
+        "Nedved", "Shevchenko", "Cannavaro", "Modric", "Benzema"
+      ]
+    },
+    "category": "Ballon d'Or",
+    "difficulty": "hard"
+  },
+  {
+    "type": "bid",
+    "question": "Name as many clubs that have played in the Premier League as you can",
+    "answer": {
+      "suggestions": [
+        "Manchester United", "Liverpool", "Arsenal", "Chelsea", "Manchester City",
+        "Tottenham", "Newcastle", "Everton", "Aston Villa", "West Ham",
+        "Leeds United", "Leicester City", "Southampton", "Fulham", "Crystal Palace",
+        "Blackburn", "Birmingham", "Sunderland", "Nottingham Forest", "Sheffield United"
+      ]
+    },
+    "category": "Premier League",
+    "difficulty": "medium"
+  },
+  {
+    "type": "bid",
+    "question": "Name as many countries that have hosted the FIFA World Cup as you can",
+    "answer": {
+      "suggestions": [
+        "Uruguay", "Italy", "France", "Brazil", "Switzerland", "Sweden", "Chile",
+        "England", "Mexico", "West Germany", "Argentina", "Spain", "United States",
+        "Japan", "South Korea", "Germany", "South Africa", "Russia", "Qatar", "Canada"
+      ]
+    },
+    "category": "World Cup",
+    "difficulty": "hard"
+  },
+  {
+    "type": "bid",
+    "question": "Name as many Golden Boot winners at FIFA World Cups as you can",
+    "answer": {
+      "suggestions": [
+        "Miroslav Klose", "Ronaldo", "Just Fontaine", "Gerd Muller", "Harry Kane",
+        "Thomas Muller", "James Rodriguez", "Davor Suker", "Salvatore Schillaci",
+        "Gary Lineker", "Paolo Rossi", "Mario Kempes", "Grzegorz Lato", "Eusebio",
+        "Sandor Kocsis", "Ademir", "Leonidas", "Guillermo Stabile"
+      ]
+    },
+    "category": "World Cup",
+    "difficulty": "hard"
+  }
+]

@@ -1,0 +1,41 @@
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: footi
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-footi}
+      POSTGRES_DB: footi
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U footi"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  server:
+    build: ./server
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgres://footi:${POSTGRES_PASSWORD:-footi}@db:5432/footi
+      SESSION_SECRET: ${SESSION_SECRET:-dev-only-secret-change-me}
+      ADMIN_TOKEN: ${ADMIN_TOKEN:-footi-admin}
+      PORT: "3000"
+    volumes:
+      - ./seed:/seed:ro
+      - ./db:/app/db:ro
+    depends_on:
+      db:
+        condition: service_healthy
+
+  frontend:
+    build: ./client
+    restart: unless-stopped
+    ports:
+      - "${APP_PORT:-1234}:80"
+    depends_on:
+      - server
+
+volumes:
+  pgdata:

@@ -40,6 +40,7 @@ export interface AuctionPlayer {
   name: string;
   imageUrl: string;
   position: string;
+  clubName?: string;
 }
 
 export interface AuctionManager {

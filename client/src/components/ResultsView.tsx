@@ -43,9 +43,9 @@ export default function ResultsView({ state }: { state: LobbyState }) {
         <AuctionResults results={results} meId={me.id} />
       ) : results?.kind === 'ffa' ? (
         <FfaResults results={results} meId={me.id} />
-      ) : (
+      ) : results?.kind === 'teams' ? (
         <TeamsResults results={results} meId={me.id} />
-      )}
+      ) : null}
 
       <div className="py-4 text-center">
         <p className="text-lg font-black text-white">Great game! 🎉</p>

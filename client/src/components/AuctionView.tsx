@@ -119,7 +119,7 @@ export default function AuctionView({ state }: { state: LobbyState }) {
                   min={0}
                   max={a.budget}
                   value={amount}
-                  onChange={(e) => setAmount(e.target.value)}
+                  onChange={(e) => setAmount(Number(e.target.value) || 0)}
                   className="input-field w-32 text-center text-2xl font-black"
                 />
                 <span className="text-xs font-bold text-slate-500">/ {a.budget}M</span>
@@ -161,10 +161,10 @@ export default function AuctionView({ state }: { state: LobbyState }) {
             {a.result.winner > 0 ? (
               <>
                 <p className="mt-1 text-base font-black text-emerald-400">
-                  {state.players.find((p) => p.userId === a.result.winner)?.username ?? 'Winner'} won with {a.result.winnerBid}M €
+                  {state.players.find((p) => p.userId === a.result!.winner)?.username ?? 'Winner'} won with {a.result!.winnerBid}M €
                 </p>
                 <p className="mt-0.5 text-xs text-slate-400">
-                  {(a.result.winner === me.id ? 'You won ' : 'They got ') + offeredName(a.offered)}
+                  {(a.result!.winner === me.id ? 'You won ' : 'They got ') + offeredName(a.offered!)}
                 </p>
               </>
             ) : (
@@ -239,11 +239,13 @@ function offeredName(o: AuctionOffered): string {
 }
 
 function offeredSub(o: AuctionOffered): string {
-  return o.kind === 'player' ? `${o.player.position} · ${o.player.clubName || 'Free agent'}` : `Manager · ${o.manager.clubName}`;
+  return o.kind === 'player'
+    ? `${o.player.position} · ${o.player.clubName || 'Free agent'}`
+    : `Manager · ${o.manager.clubName}`;
 }
 
 function replacementName(r: AuctionPlayer | AuctionManager): string {
-  return 'name' in r ? r.name : r.name;
+  return r.name;
 }
 
 function XiRow({

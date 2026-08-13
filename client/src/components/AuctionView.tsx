@@ -18,6 +18,7 @@ export default function AuctionView({ state }: { state: LobbyState }) {
 
   const [amount, setAmount] = useState(5);
   const [busy, setBusy] = useState(false);
+  const [copied, setCopied] = useState(false);
   const isBidPhase = state.phase === 'auction_bid';
   const isReveal = state.phase === 'auction_reveal';
   const isWinnerPick = state.phase === 'auction_winner';
@@ -68,6 +69,17 @@ export default function AuctionView({ state }: { state: LobbyState }) {
       console.error(e);
     } finally {
       setBusy(false);
+    }
+  };
+
+  const copyPrompt = async () => {
+    if (!a.winnerPrompt) return;
+    try {
+      await navigator.clipboard.writeText(a.winnerPrompt);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch (e) {
+      console.error(e);
     }
   };
 
@@ -210,6 +222,30 @@ export default function AuctionView({ state }: { state: LobbyState }) {
           <Trophy size={20} className="mx-auto text-amber-400" />
           <p className="mt-1 text-sm font-black text-white">All slots drafted</p>
           <p className="text-xs text-slate-400">Results are coming up…</p>
+        </div>
+      )}
+
+      {/* LLM judge prompt first, then the host picks the winner */}
+      {isWinnerPick && a.winnerPrompt && (
+        <div className="glass-card p-4">
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-sm font-black text-slate-100">Ask an LLM to judge the squads</p>
+            <button
+              onClick={copyPrompt}
+              className={cx(
+                'rounded-lg px-3 py-1.5 text-xs font-black transition',
+                copied ? 'bg-emerald-500/20 text-emerald-300' : 'bg-pitch-800 text-slate-300 hover:text-white',
+              )}
+            >
+              {copied ? 'Copied ✓' : 'Copy prompt'}
+            </button>
+          </div>
+          <p className="mt-0.5 text-xs text-slate-400">
+            Paste this into Gemini, ChatGPT or any LLM — then use its verdict to pick the winner below.
+          </p>
+          <p className="mt-2 whitespace-pre-wrap rounded-xl bg-pitch-950/60 p-3 font-mono text-[11px] leading-relaxed text-slate-400">
+            {a.winnerPrompt}
+          </p>
         </div>
       )}
 

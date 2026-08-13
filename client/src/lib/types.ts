@@ -81,6 +81,7 @@ export interface AuctionState {
   xi: AuctionXI;
   result: AuctionResult | null;
   winner: number | null;
+  winnerPrompt?: string;
   overview?: { userId: number; username: string; budget: number }[];
 }
 

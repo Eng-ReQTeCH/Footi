@@ -10,7 +10,7 @@ const UA =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
 const EXTS = ['jpg', 'jpeg', 'png', 'webp', 'gif', 'avif'];
 
-const remoteByPlayerId = new Map<number, string>();
+const remoteByPlayerId = new Map<number, string[]>();
 const fileByPlayerId = new Map<number, string>();
 
 function ensureDir() {
@@ -45,42 +45,51 @@ function extFor(url: string, contentType: string | null): string {
   return 'jpg';
 }
 
-async function downloadOne(id: number, url: string): Promise<void> {
-  const res = await fetch(url, {
-    headers: { 'User-Agent': UA, Referer: 'https://www.transfermarkt.com/' },
-    signal: AbortSignal.timeout(TIMEOUT_MS),
-    redirect: 'follow',
-  });
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  const buf = Buffer.from(await res.arrayBuffer());
-  if (buf.length === 0) throw new Error('empty body');
-  const ext = extFor(url, res.headers.get('content-type'));
-  const name = `${id}.${ext}`;
-  const abs = path.join(IMAGE_DIR, name);
-  const tmp = `${abs}.part`;
-  await writeFile(tmp, buf);
-  try {
-    await rename(tmp, abs);
-  } catch (e) {
-    await rm(tmp, { force: true });
-    throw e;
+async function downloadOne(id: number, urls: string[]): Promise<void> {
+  let lastError: unknown;
+  for (const url of urls) {
+    try {
+      const res = await fetch(url, {
+        headers: { 'User-Agent': UA, Referer: 'https://www.transfermarkt.com/' },
+        signal: AbortSignal.timeout(TIMEOUT_MS),
+        redirect: 'follow',
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const buf = Buffer.from(await res.arrayBuffer());
+      if (buf.length === 0) throw new Error('empty body');
+      const ext = extFor(url, res.headers.get('content-type'));
+      const name = `${id}.${ext}`;
+      const abs = path.join(IMAGE_DIR, name);
+      const tmp = `${abs}.part`;
+      await writeFile(tmp, buf);
+      try {
+        await rename(tmp, abs);
+      } catch (e) {
+        await rm(tmp, { force: true });
+        throw e;
+      }
+      fileByPlayerId.set(id, name);
+      return;
+    } catch (e) {
+      lastError = e;
+    }
   }
-  fileByPlayerId.set(id, name);
+  throw lastError ?? new Error('no image URLs configured');
 }
 
 export function setupImageCache(data: PlayerData): void {
   ensureDir();
-  const jobs: { id: number; url: string }[] = [];
+  const jobs: { id: number; urls: string[] }[] = [];
   const seen = new Set<number>();
   for (const list of [data.players, data.guessWhoPlayers]) {
     for (const p of list) {
       if (seen.has(p.id)) continue;
       seen.add(p.id);
-      const remote = p.imageUrl;
-      remoteByPlayerId.set(p.id, remote);
+      const urls = [p.imageUrl, ...(p.fallbackImageUrls ?? [])];
+      remoteByPlayerId.set(p.id, urls);
       p.imageUrl = `/images/${p.id}`;
       if (fileByPlayerId.has(p.id)) continue;
-      jobs.push({ id: p.id, url: remote });
+      jobs.push({ id: p.id, urls });
     }
   }
   if (jobs.length === 0) {
@@ -96,7 +105,7 @@ export function setupImageCache(data: PlayerData): void {
     while (inFlight < CONCURRENCY && cursor < jobs.length) {
       const job = jobs[cursor++];
       inFlight++;
-      downloadOne(job.id, job.url)
+      downloadOne(job.id, job.urls)
         .catch(() => {})
         .finally(() => {
           inFlight--;
@@ -115,5 +124,5 @@ export function localFileFor(id: number): string | null {
 }
 
 export function remoteFor(id: number): string | null {
-  return remoteByPlayerId.get(id) ?? null;
+  return remoteByPlayerId.get(id)?.[0] ?? null;
 }

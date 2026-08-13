@@ -12,6 +12,7 @@ const GUESS_DEF_MV_FLOOR = Number(process.env.GUESS_DEF_MV_FLOOR) || 60_000_000;
 const GUESS_MID_MV_FLOOR = Number(process.env.GUESS_MID_MV_FLOOR) || 70_000_000;
 const GUESS_ATT_MV_FLOOR = Number(process.env.GUESS_ATT_MV_FLOOR) || 80_000_000;
 const GUESS_FC_RATING_FLOOR = Number(process.env.GUESS_FC_RATING_FLOOR) || 85;
+const ADDITIONAL_NONTOP5_FLOOR = Number(process.env.ADDITIONAL_NONTOP5_FLOOR) || 86;
 const ADD_ID_OFFSET = 10_000_000;
 const POSITIONS = ['Goalkeeper', 'Defender', 'Midfield', 'Attack'];
 
@@ -48,6 +49,7 @@ export interface PoolPlayer {
   name: string;
   position: string;
   imageUrl: string;
+  fallbackImageUrls?: string[];
   clubName: string;
   highestMV: number;
   lastSeason: number;
@@ -155,6 +157,7 @@ interface Fc26Index {
   last: Map<string, Map<number, string>>;
   lastClub: Map<string, Map<number, string>>;
   ids: Set<number>;
+  topClubs: Set<string>;
 }
 
 function addFc26(m: Map<string, Map<number, string>>, key: string, overall: number, id: string): void {
@@ -166,12 +169,20 @@ function addFc26(m: Map<string, Map<number, string>>, key: string, overall: numb
   if (!entry.has(overall)) entry.set(overall, id);
 }
 
-function bestOverall(m: Map<number, string> | undefined): number {
-  if (!m || m.size === 0) return 0;
+function fcEntry(m: Map<number, string> | undefined): { overall: number; id: string } | null {
+  if (!m || m.size === 0) return null;
   let best = 0;
-  for (const k of m.keys()) if (k > best) best = k;
-  return best;
+  let bestId = '';
+  for (const [k, v] of m) {
+    if (k > best) {
+      best = k;
+      bestId = v;
+    }
+  }
+  return best > 0 ? { overall: best, id: bestId } : null;
 }
+
+const TOP5_FC_LEAGUE_NAMES = ['Premier League', 'La Liga', 'Serie A', 'Bundesliga', 'Ligue 1'];
 
 function loadFc26(rows: string[][], idx: Map<string, number>): Fc26Index {
   const long = new Map<string, Map<number, string>>();
@@ -179,6 +190,7 @@ function loadFc26(rows: string[][], idx: Map<string, number>): Fc26Index {
   const last = new Map<string, Map<number, string>>();
   const lastClub = new Map<string, Map<number, string>>();
   const ids = new Set<number>();
+  const topClubs = new Set<string>();
   for (let i = 1; i < rows.length; i++) {
     const row = rows[i];
     if (row.length === 1 && row[0].trim() === '') continue;
@@ -190,7 +202,10 @@ function loadFc26(rows: string[][], idx: Map<string, number>): Fc26Index {
     const id = field(row, idx, 'player_id');
     const pid = num(id);
     if (pid) ids.add(pid);
-    const club = normalize(field(row, idx, 'club_name'));
+    const league = field(row, idx, 'league_name');
+    const clubRaw = field(row, idx, 'club_name');
+    const club = normalize(clubRaw);
+    if (club && TOP5_FC_LEAGUE_NAMES.includes(league)) topClubs.add(club);
     const words = longName.split(' ');
     const lastWord = words[words.length - 1];
     if (!lastWord) continue;
@@ -199,47 +214,49 @@ function loadFc26(rows: string[][], idx: Map<string, number>): Fc26Index {
     addFc26(last, lastWord, overall, id);
     if (club) addFc26(lastClub, `${lastWord}|${club}`, overall, id);
   }
-  return { long, short, last, lastClub, ids };
+  return { long, short, last, lastClub, ids, topClubs };
 }
 
-function fcRating(row: string[], idx: Map<string, number>, fc26: Fc26Index): number {
+function fcMatch(row: string[], idx: Map<string, number>, fc26: Fc26Index): { overall: number; id: string } | null {
   const full = normalize(field(row, idx, 'name'));
   const first = normalize(field(row, idx, 'first_name'));
   const last = normalize(field(row, idx, 'last_name'));
   const club = normalize(field(row, idx, 'current_club_name'));
 
-  let r = bestOverall(fc26.long.get(full));
-  if (r > 0) return r;
+  let r = fcEntry(fc26.long.get(full));
+  if (r) return r;
   if (first && last) {
-    r = bestOverall(fc26.long.get(`${first} ${last}`));
-    if (r > 0) return r;
-    r = bestOverall(fc26.long.get(`${last} ${first}`));
-    if (r > 0) return r;
+    r = fcEntry(fc26.long.get(`${first} ${last}`));
+    if (r) return r;
+    r = fcEntry(fc26.long.get(`${last} ${first}`));
+    if (r) return r;
     const al = `${first[0]} ${last}`;
-    r = bestOverall(fc26.long.get(al));
-    if (r > 0) return r;
-    r = bestOverall(fc26.short.get(al));
-    if (r > 0) return r;
+    r = fcEntry(fc26.long.get(al));
+    if (r) return r;
+    r = fcEntry(fc26.short.get(al));
+    if (r) return r;
   }
   if (last) {
     if (first) {
-      r = bestOverall(fc26.short.get(`${first[0]} ${last}`));
-      if (r > 0) return r;
+      r = fcEntry(fc26.short.get(`${first[0]} ${last}`));
+      if (r) return r;
     }
-    r = bestOverall(fc26.short.get(full));
-    if (r > 0) return r;
+    r = fcEntry(fc26.short.get(full));
+    if (r) return r;
     if (club) {
-      r = bestOverall(fc26.lastClub.get(`${last}|${club}`));
-      if (r > 0) return r;
+      r = fcEntry(fc26.lastClub.get(`${last}|${club}`));
+      if (r) return r;
     }
-    r = bestOverall(fc26.last.get(last));
-    if (r > 0) return r;
+    r = fcEntry(fc26.last.get(last));
+    if (r) return r;
   }
-  return 0;
+  return null;
 }
 
 interface AdditionalRec {
   id: number;
+  rawId: string;
+  fifaVersion: string;
   name: string;
   position: string;
   overall: number;
@@ -253,12 +270,21 @@ function sofifaUrl(id: number): string {
   return `https://cdn.sofifa.net/players/${s.slice(0, 3)}/${s.slice(3)}/26_120.png`;
 }
 
-function loadAdditional(rows: string[][], idx: Map<string, number>): Map<number, AdditionalRec> {
+function futbinUrl(fifaVersion: string, playerId: string): string {
+  return `https://cdn.futbin.com/content/fifa${fifaVersion}/img/players/${playerId}.png`;
+}
+
+function loadAdditional(
+  rows: string[][],
+  idx: Map<string, number>,
+): { byId: Map<number, AdditionalRec>; nameToFutbin: Map<string, { overall: number; url: string }> } {
   const byId = new Map<number, AdditionalRec>();
+  const nameToFutbin = new Map<string, { overall: number; url: string }>();
   for (let i = 1; i < rows.length; i++) {
     const row = rows[i];
     if (row.length === 1 && row[0].trim() === '') continue;
-    const id = num(field(row, idx, 'player_id'));
+    const rawId = field(row, idx, 'player_id');
+    const id = num(rawId);
     if (!id) continue;
     const overall = num(field(row, idx, 'overall'));
     const existing = byId.get(id);
@@ -267,17 +293,28 @@ function loadAdditional(rows: string[][], idx: Map<string, number>): Map<number,
     if (!position) continue;
     const shortName = field(row, idx, 'short_name');
     const longName = field(row, idx, 'long_name');
-    byId.set(id, {
+    const rec: AdditionalRec = {
       id,
+      rawId,
+      fifaVersion: field(row, idx, 'fifa_version'),
       name: shortName || longName || `Player #${id}`,
       position,
       overall,
       clubName: field(row, idx, 'club_name'),
       shortNorm: normalize(shortName),
       longNorm: normalize(longName),
-    });
+    };
+    byId.set(id, rec);
+    if (!rawId.includes('_')) {
+      const url = futbinUrl(rec.fifaVersion || '26', rawId);
+      for (const key of [rec.shortNorm, rec.longNorm]) {
+        if (!key) continue;
+        const prev = nameToFutbin.get(key);
+        if (!prev || overall > prev.overall) nameToFutbin.set(key, { overall, url });
+      }
+    }
   }
-  return byId;
+  return { byId, nameToFutbin };
 }
 
 const FALLBACK_MANAGERS: { name: string; clubName: string }[] = [
@@ -319,7 +356,30 @@ export async function loadPlayerData(): Promise<PlayerData> {
   const pIdx = indexHeaders(pRows[0]);
   const cIdx = indexHeaders(cRows[0]);
 
-  let fc26: Fc26Index = { long: new Map(), short: new Map(), last: new Map(), lastClub: new Map(), ids: new Set() };
+  const topClubNames = new Set<string>();
+  for (let i = 1; i < cRows.length; i++) {
+    const comp = field(cRows[i], cIdx, 'domestic_competition_id');
+    if (!TOP5_COMPETITIONS.includes(comp) && !comp.startsWith('EGY')) continue;
+    const name = normalize(field(cRows[i], cIdx, 'name'));
+    if (name) topClubNames.add(name);
+  }
+  for (let i = 1; i < pRows.length; i++) {
+    const comp = field(pRows[i], pIdx, 'current_club_domestic_competition_id');
+    if (!TOP5_COMPETITIONS.includes(comp) && !comp.startsWith('EGY')) continue;
+    const name = normalize(field(pRows[i], pIdx, 'current_club_name'));
+    if (name) topClubNames.add(name);
+  }
+  const isTop5Club = (clubName: string): boolean => {
+    const n = normalize(clubName);
+    if (!n) return false;
+    if (topClubNames.has(n)) return true;
+    for (const c of topClubNames) {
+      if (n.length >= 4 && (c.includes(n) || n.includes(c))) return true;
+    }
+    return false;
+  };
+
+  let fc26: Fc26Index = { long: new Map(), short: new Map(), last: new Map(), lastClub: new Map(), ids: new Set(), topClubs: new Set() };
   let fc26Path: string | undefined;
   try {
     fc26Path = firstExisting(FC26_CANDIDATES);
@@ -329,6 +389,7 @@ export async function loadPlayerData(): Promise<PlayerData> {
   if (fc26Path) {
     const fRows = parseCsv(await readFile(fc26Path, 'utf8'));
     fc26 = loadFc26(fRows, indexHeaders(fRows[0]));
+    for (const c of fc26.topClubs) topClubNames.add(c);
   }
 
   let additionalPath: string | undefined;
@@ -336,6 +397,15 @@ export async function loadPlayerData(): Promise<PlayerData> {
     additionalPath = firstExisting(ADDITIONAL_CANDIDATES);
   } catch {
     // Additional FIFA players are optional.
+  }
+
+  let additionalById = new Map<number, AdditionalRec>();
+  let nameToFutbin = new Map<string, { overall: number; url: string }>();
+  if (additionalPath) {
+    const aRows = parseCsv(await readFile(additionalPath, 'utf8'));
+    const loaded = loadAdditional(aRows, indexHeaders(aRows[0]));
+    additionalById = loaded.byId;
+    nameToFutbin = loaded.nameToFutbin;
   }
 
   const clubScores = new Map<string, number>();
@@ -385,16 +455,18 @@ export async function loadPlayerData(): Promise<PlayerData> {
     if (row.length === 1 && row[0].trim() === '') continue;
     const id = num(field(row, pIdx, 'player_id'));
     if (!id || seen.has(id)) continue;
+    const comp = field(row, pIdx, 'current_club_domestic_competition_id');
+    if (!TOP5_COMPETITIONS.includes(comp) && !comp.startsWith('EGY') && !isEgyptian(row, pIdx)) continue;
     const position = field(row, pIdx, 'position');
     if (!POSITIONS.includes(position)) continue;
     const imageUrl = field(row, pIdx, 'image_url');
     if (!imageUrl.startsWith('http') || imageUrl.includes('default.jpg')) continue;
     const highestMV = num(field(row, pIdx, 'highest_market_value_in_eur'));
     if (highestMV <= 0) continue;
-    const comp = field(row, pIdx, 'current_club_domestic_competition_id');
     const cid = field(row, pIdx, 'current_club_id');
     const inTopClub = topClubKeys.has(`${comp}:${cid}`);
-    const rating = fcRating(row, pIdx, fc26);
+    const fc = fcMatch(row, pIdx, fc26);
+    const rating = fc ? fc.overall : 0;
     const first = field(row, pIdx, 'first_name');
     const last = field(row, pIdx, 'last_name');
     const name = (field(row, pIdx, 'name') || `${first} ${last}`).trim() || `Player #${id}`;
@@ -405,11 +477,16 @@ export async function loadPlayerData(): Promise<PlayerData> {
     const inStd = passes(floorsStd, FC_RATING_FLOOR);
     const inGuess = passes(floorsGuess, GUESS_FC_RATING_FLOOR);
     if (!inStd && !inGuess) continue;
+    const fallbackImageUrls: string[] = [];
+    if (fc && num(fc.id)) fallbackImageUrls.push(sofifaUrl(num(fc.id)));
+    const nfb = nameToFutbin.get(normalize(name)) ?? nameToFutbin.get(normalize(`${first} ${last}`));
+    if (nfb && !fallbackImageUrls.includes(nfb.url)) fallbackImageUrls.push(nfb.url);
     const p: PoolPlayer = {
       id,
       name,
       position,
       imageUrl,
+      ...(fallbackImageUrls.length ? { fallbackImageUrls } : {}),
       clubName: field(row, pIdx, 'current_club_name'),
       highestMV,
       lastSeason: num(field(row, pIdx, 'last_season')),
@@ -427,27 +504,33 @@ export async function loadPlayerData(): Promise<PlayerData> {
     seen.add(id);
   }
 
-  if (additionalPath) {
-    const aRows = parseCsv(await readFile(additionalPath, 'utf8'));
-    const additional = loadAdditional(aRows, indexHeaders(aRows[0]));
-    for (const a of additional.values()) {
-      const inStd = (a.shortNorm && standardNames.has(a.shortNorm)) || (a.longNorm && standardNames.has(a.longNorm));
-      const inGuess = (a.shortNorm && guessNames.has(a.shortNorm)) || (a.longNorm && guessNames.has(a.longNorm));
-      const p: PoolPlayer = {
-        id: ADD_ID_OFFSET + a.id,
-        name: a.name,
-        position: a.position,
-        imageUrl: fc26.ids.has(a.id) ? sofifaUrl(a.id) : `https://cdn.futbin.com/content/fifa26/img/players/${a.id}.png`,
-        clubName: a.clubName,
-        highestMV: 0,
-        lastSeason: 0,
-      };
-      const addedStd = a.overall >= FC_RATING_FLOOR && !inStd;
-      const addedGuess = a.overall >= GUESS_FC_RATING_FLOOR && !inGuess;
-      if (addedStd) players.push(p);
-      if (addedGuess) guessWhoPlayers.push(p);
-      if (addedStd || addedGuess) byId.set(p.id, p);
-    }
+  for (const a of additionalById.values()) {
+    if (a.rawId.includes('_')) continue;
+    const inStd = (a.shortNorm && standardNames.has(a.shortNorm)) || (a.longNorm && standardNames.has(a.longNorm));
+    const inGuess = (a.shortNorm && guessNames.has(a.shortNorm)) || (a.longNorm && guessNames.has(a.longNorm));
+    const topClub = isTop5Club(a.clubName);
+    const stdFloor = topClub ? FC_RATING_FLOOR : ADDITIONAL_NONTOP5_FLOOR;
+    const guessFloor = topClub ? GUESS_FC_RATING_FLOOR : ADDITIONAL_NONTOP5_FLOOR;
+    const addedStd = a.overall >= stdFloor && !inStd;
+    const addedGuess = a.overall >= guessFloor && !inGuess;
+    if (!addedStd && !addedGuess) continue;
+    const fallbackImageUrls: string[] = [];
+    if (fc26.ids.has(a.id)) fallbackImageUrls.push(sofifaUrl(a.id));
+    const f26 = futbinUrl('26', a.rawId);
+    if (a.fifaVersion !== '26' && !fallbackImageUrls.includes(f26)) fallbackImageUrls.push(f26);
+    const p: PoolPlayer = {
+      id: ADD_ID_OFFSET + a.id,
+      name: a.name,
+      position: a.position,
+      imageUrl: futbinUrl(a.fifaVersion || '26', a.rawId),
+      ...(fallbackImageUrls.length ? { fallbackImageUrls } : {}),
+      clubName: a.clubName,
+      highestMV: 0,
+      lastSeason: 0,
+    };
+    if (addedStd) players.push(p);
+    if (addedGuess) guessWhoPlayers.push(p);
+    if (addedStd || addedGuess) byId.set(p.id, p);
   }
 
   const managers: Manager[] = [];

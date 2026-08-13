@@ -665,6 +665,33 @@ export class LobbyManager {
     else xi.att.push(p as PoolPlayer);
   }
 
+  private auctionJudgePrompt(l: Lobby, g: AuctionGame): string {
+    const entries = [...l.players.values()]
+      .map((p) => {
+        const xi = g.xis.get(p.userId);
+        if (!xi) return null;
+        const starters = [
+          xi.gk?.name,
+          ...xi.def.map((x) => x.name),
+          ...xi.mid.map((x) => x.name),
+          ...xi.att.map((x) => x.name),
+        ].filter(Boolean) as string[];
+        const sub = xi.sub ? `, SUB: ${xi.sub.name}` : '';
+        const mgr = xi.manager ? ` (Manager: ${xi.manager.name})` : '';
+        const budget = g.budgets.get(p.userId) ?? 0;
+        return `${p.username}: ${starters.join(', ')}${sub}${mgr} — ${budget}M € remaining`;
+      })
+      .filter((s): s is string => s !== null);
+    return [
+      `You are an impartial football draft judge. ${entries.length} players each drafted a squad in a budget auction (positions: GK, DEF x4, MID x3, ATT x3, a Super Sub and a Manager).`,
+      'Judge each squad purely on squad quality and build: balance across positions, star power, the manager pick, and remaining budget (spending wisely counts). Ignore usernames and do not play favorites.',
+      '',
+      ...entries,
+      '',
+      'First state exactly which player drafted the strongest squad (their username), then give 2-3 short sentences of reasoning.',
+    ].join('\n');
+  }
+
   getAuctionView(lobby: Lobby, userId: number) {
     const l = lobby;
     const g = l.game;
@@ -682,6 +709,7 @@ export class LobbyManager {
       xi,
       result: g.result,
       winner: g.winner,
+      winnerPrompt: draftDone ? this.auctionJudgePrompt(l, g) : undefined,
       overview: draftDone
         ? [...l.players.values()].map((p) => ({
             userId: p.userId,

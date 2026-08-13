@@ -3,15 +3,17 @@ import { existsSync } from 'node:fs';
 import path from 'node:path';
 
 export const TOP5_COMPETITIONS = ['GB1', 'L1', 'ES1', 'IT1', 'FR1'];
-const HIGH_MV_FLOOR = Number(process.env.PLAYER_MV_FLOOR) || 40_000_000;
-const GK_MV_FLOOR = Number(process.env.PLAYER_GK_MV_FLOOR) || 15_000_000;
-const TOP_CLUB_MV_FLOOR = Number(process.env.TOP_CLUB_MV_FLOOR) || 18_000_000;
-const FC_RATING_FLOOR = Number(process.env.PLAYER_FC_RATING_FLOOR) || 83;
-const GUESS_GK_MV_FLOOR = Number(process.env.GUESS_GK_MV_FLOOR) || 30_000_000;
-const GUESS_DEF_MV_FLOOR = Number(process.env.GUESS_DEF_MV_FLOOR) || 60_000_000;
-const GUESS_MID_MV_FLOOR = Number(process.env.GUESS_MID_MV_FLOOR) || 70_000_000;
-const GUESS_ATT_MV_FLOOR = Number(process.env.GUESS_ATT_MV_FLOOR) || 80_000_000;
-const GUESS_FC_RATING_FLOOR = Number(process.env.GUESS_FC_RATING_FLOOR) || 85;
+const PLAYER_DEF_MV_FLOOR = Number(process.env.PLAYER_DEF_MV_FLOOR) || 45_000_000;
+const PLAYER_MID_MV_FLOOR = Number(process.env.PLAYER_MID_MV_FLOOR) || 55_000_000;
+const PLAYER_ATT_MV_FLOOR = Number(process.env.PLAYER_ATT_MV_FLOOR) || 65_000_000;
+const GK_MV_FLOOR = Number(process.env.PLAYER_GK_MV_FLOOR) || 25_000_000;
+const TOP_CLUB_MV_FLOOR = Number(process.env.TOP_CLUB_MV_FLOOR) || 25_000_000;
+const FC_RATING_FLOOR = Number(process.env.PLAYER_FC_RATING_FLOOR) || 84;
+const GUESS_GK_MV_FLOOR = Number(process.env.GUESS_GK_MV_FLOOR) || 40_000_000;
+const GUESS_DEF_MV_FLOOR = Number(process.env.GUESS_DEF_MV_FLOOR) || 70_000_000;
+const GUESS_MID_MV_FLOOR = Number(process.env.GUESS_MID_MV_FLOOR) || 80_000_000;
+const GUESS_ATT_MV_FLOOR = Number(process.env.GUESS_ATT_MV_FLOOR) || 90_000_000;
+const GUESS_FC_RATING_FLOOR = Number(process.env.GUESS_FC_RATING_FLOOR) || 86;
 const ADDITIONAL_NONTOP5_FLOOR = Number(process.env.ADDITIONAL_NONTOP5_FLOOR) || 86;
 const ADD_ID_OFFSET = 10_000_000;
 const POSITIONS = ['Goalkeeper', 'Defender', 'Midfield', 'Attack'];
@@ -154,7 +156,6 @@ function normalize(s: string): string {
 interface Fc26Index {
   long: Map<string, Map<number, string>>;
   short: Map<string, Map<number, string>>;
-  last: Map<string, Map<number, string>>;
   lastClub: Map<string, Map<number, string>>;
   ids: Set<number>;
   topClubs: Set<string>;
@@ -187,7 +188,6 @@ const TOP5_FC_LEAGUE_NAMES = ['Premier League', 'La Liga', 'Serie A', 'Bundeslig
 function loadFc26(rows: string[][], idx: Map<string, number>): Fc26Index {
   const long = new Map<string, Map<number, string>>();
   const short = new Map<string, Map<number, string>>();
-  const last = new Map<string, Map<number, string>>();
   const lastClub = new Map<string, Map<number, string>>();
   const ids = new Set<number>();
   const topClubs = new Set<string>();
@@ -211,7 +211,6 @@ function loadFc26(rows: string[][], idx: Map<string, number>): Fc26Index {
     if (!lastWord) continue;
     addFc26(long, longName, overall, id);
     if (shortName) addFc26(short, shortName, overall, id);
-    addFc26(last, lastWord, overall, id);
     if (club) addFc26(lastClub, `${lastWord}|${club}`, overall, id);
   }
   return { long, short, last, lastClub, ids, topClubs };
@@ -247,8 +246,6 @@ function fcMatch(row: string[], idx: Map<string, number>, fc26: Fc26Index): { ov
       r = fcEntry(fc26.lastClub.get(`${last}|${club}`));
       if (r) return r;
     }
-    r = fcEntry(fc26.last.get(last));
-    if (r) return r;
   }
   return null;
 }
@@ -379,7 +376,7 @@ export async function loadPlayerData(): Promise<PlayerData> {
     return false;
   };
 
-  let fc26: Fc26Index = { long: new Map(), short: new Map(), last: new Map(), lastClub: new Map(), ids: new Set(), topClubs: new Set() };
+  let fc26: Fc26Index = { long: new Map(), short: new Map(), lastClub: new Map(), ids: new Set(), topClubs: new Set() };
   let fc26Path: string | undefined;
   try {
     fc26Path = firstExisting(FC26_CANDIDATES);
@@ -429,9 +426,9 @@ export async function loadPlayerData(): Promise<PlayerData> {
 
   const floorsStd = {
     gk: GK_MV_FLOOR,
-    def: HIGH_MV_FLOOR,
-    mid: HIGH_MV_FLOOR,
-    att: HIGH_MV_FLOOR,
+    def: PLAYER_DEF_MV_FLOOR,
+    mid: PLAYER_MID_MV_FLOOR,
+    att: PLAYER_ATT_MV_FLOOR,
   };
   const floorsGuess = {
     gk: GUESS_GK_MV_FLOOR,

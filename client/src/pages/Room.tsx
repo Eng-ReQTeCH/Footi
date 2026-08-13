@@ -4,6 +4,7 @@ import GameView from '../components/GameView';
 import JudgeView from '../components/JudgeView';
 import ResultsView from '../components/ResultsView';
 import { useNavigate } from 'react-router-dom';
+import { Button } from '../components/ui/Button';
 
 export default function Room() {
   const { state, connected } = useSocket();
@@ -11,17 +12,12 @@ export default function Room() {
 
   if (!state) {
     return (
-      <div className="flex min-h-[70vh] flex-col items-center justify-center gap-4 text-center">
+      <div className="flex min-h-[70vh] flex-col items-center justify-center gap-4 pt-8 text-center">
         <div className="text-5xl">🛋️</div>
         <p className="text-slate-300">
           {connected ? 'You are not in a lobby.' : 'Reconnecting…'}
         </p>
-        <button
-          onClick={() => navigate('/')}
-          className="rounded-xl bg-emerald-500 px-6 py-3 font-black text-pitch-950"
-        >
-          Back to home
-        </button>
+        <Button onClick={() => navigate('/')}>Back to home</Button>
       </div>
     );
   }

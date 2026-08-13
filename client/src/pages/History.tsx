@@ -2,8 +2,11 @@ import { useCallback, useEffect, useState } from 'react';
 import { api } from '../lib/api';
 import type { HistoryMatch } from '../lib/types';
 import { teamColor } from '../lib/theme';
+import { AppHeader } from '../components/ui/AppHeader';
+import { useSocket } from '../lib/socket';
 
 export default function History() {
+  const { connected } = useSocket();
   const [matches, setMatches] = useState<HistoryMatch[] | null>(null);
   const [offset, setOffset] = useState(0);
 
@@ -22,19 +25,28 @@ export default function History() {
       ' · ' + d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
   };
 
-  if (matches === null) return <p className="py-10 text-center text-slate-500">Loading…</p>;
+  if (matches === null) return (
+    <div className="pt-2">
+      <AppHeader connected={connected} />
+      <p className="py-10 text-center text-slate-500">Loading…</p>
+    </div>
+  );
   if (matches.length === 0) {
     return (
-      <div className="py-16 text-center">
-        <div className="text-5xl">📜</div>
-        <p className="mt-3 font-bold text-slate-300">No matches yet</p>
-        <p className="mt-1 text-sm text-slate-500">Finish a game and it'll show up here.</p>
+      <div className="pt-2">
+        <AppHeader connected={connected} />
+        <div className="py-16 text-center">
+          <div className="text-5xl">📜</div>
+          <p className="mt-3 font-bold text-slate-300">No matches yet</p>
+          <p className="mt-1 text-sm text-slate-500">Finish a game and it'll show up here.</p>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="mx-auto max-w-2xl space-y-3 pt-2">
+    <div className="space-y-3 pt-2">
+      <AppHeader connected={connected} />
       {matches.map((m) => {
         const isTeams = m.mode === 'teams';
         const rows = [...m.players].sort((a, b) => (a.place ?? 99) - (b.place ?? 99));
@@ -45,7 +57,7 @@ export default function History() {
           byTeam.get(key)!.push(p);
         }
         return (
-          <div key={m.id} className="rounded-2xl border border-pitch-700 bg-pitch-900 p-4">
+          <div key={m.id} className="glass-card p-4">
             <div className="flex items-center justify-between text-xs font-bold text-slate-500">
               <span className="rounded-full bg-pitch-800 px-2.5 py-1 uppercase tracking-wide">
                 {isTeams ? 'Teams' : 'Free for all'} · code {m.lobbyCode}

@@ -1,7 +1,9 @@
 import { useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useSocket } from '../lib/socket';
-import { api, type Me } from '../lib/api';
+import { type Me } from '../lib/api';
+import { AppHeader } from '../components/ui/AppHeader';
+import { SoccerBall, LogIn } from '../components/ui/Icons';
 
 export default function Home({ me }: { me: Me }) {
   const { createLobby, joinLobby, connected } = useSocket();
@@ -12,7 +14,7 @@ export default function Home({ me }: { me: Me }) {
   const create = async () => {
     setBusy(true);
     try {
-      const c = await createLobby();
+      await createLobby();
       navigate('/room');
     } catch (e) {
       console.error(e);
@@ -35,72 +37,69 @@ export default function Home({ me }: { me: Me }) {
 
   const st = me.stats;
   const winRate = st.played ? Math.round((st.wins / st.played) * 100) : 0;
+  const hour = new Date().getHours();
+  const greeting = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
 
   return (
-    <div className="space-y-6 pt-4">
-      <section className="text-center">
-        <h1 className="text-2xl font-black lg:text-3xl">
-          Good evening, <span className="text-emerald-400">{me.username}</span>
+    <div className="space-y-6 pt-2">
+      <AppHeader connected={connected} />
+
+      <section>
+        <h1 className="text-2xl font-black text-white">
+          {greeting}, {me.username} 👋
         </h1>
-        <p className="mt-1 text-sm text-slate-400">
-          {connected ? (
-            <span className="inline-flex items-center gap-1.5">
-              <span className="size-2 rounded-full bg-emerald-400" /> connected
-            </span>
-          ) : (
-            <span className="inline-flex items-center gap-1.5">
-              <span className="size-2 rounded-full bg-amber-400" /> reconnecting…
-            </span>
-          )}
-        </p>
       </section>
 
-      <section className="grid gap-4 sm:grid-cols-2">
+      <section className="grid grid-cols-2 gap-3">
         <button
           onClick={create}
           disabled={busy || !connected}
-          className="group rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-6 text-left transition hover:bg-emerald-500/20 disabled:opacity-40"
+          className="glass-card group flex flex-col items-start p-4 text-left transition hover:border-emerald-500/40 hover:shadow-brand disabled:opacity-40"
         >
-          <div className="text-3xl">🆕</div>
-          <div className="mt-3 text-xl font-black text-emerald-400">Create lobby</div>
-          <div className="mt-1 text-sm text-slate-400">You host — pick the mode, timer and questions</div>
+          <div className="mb-3 grid size-10 place-items-center rounded-xl bg-emerald-500/15 text-emerald-400">
+            <SoccerBall size={22} />
+          </div>
+          <div className="text-sm font-black text-white">Create lobby</div>
+          <div className="mt-0.5 text-xs text-slate-500">Host a game</div>
         </button>
 
         <form
           onSubmit={join}
-          className="rounded-2xl border border-pitch-700 bg-pitch-900 p-6"
+          className="glass-card flex flex-col items-start p-4"
         >
-          <div className="text-3xl">🎮</div>
-          <label className="mt-3 block text-xl font-black text-slate-200">Join a lobby</label>
-          <div className="mt-3 flex gap-2">
+          <div className="mb-3 grid size-10 place-items-center rounded-xl bg-pitch-850 text-slate-300">
+            <LogIn size={22} />
+          </div>
+          <div className="text-sm font-black text-white">Join a lobby</div>
+          <div className="mt-2 flex w-full gap-1.5">
             <input
               value={code}
               onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 3))}
               placeholder="000"
               inputMode="numeric"
-              className="w-28 rounded-xl border border-pitch-700 bg-pitch-950 px-4 py-3 text-center text-2xl font-black tracking-[0.4em] placeholder:text-slate-700 focus:border-emerald-500"
+              className="w-full rounded-lg border border-pitch-bright bg-pitch-950/80 px-2 py-2 text-center text-lg font-black tracking-[0.3em] placeholder:text-slate-700 focus:border-emerald-500"
             />
-            <button
-              type="submit"
-              disabled={code.length !== 3 || busy || !connected}
-              className="flex-1 rounded-xl bg-slate-200 px-4 py-3 font-black text-pitch-950 transition active:scale-[0.98] disabled:opacity-40"
-            >
-              Join
-            </button>
           </div>
+          <button
+            type="submit"
+            disabled={code.length !== 3 || busy || !connected}
+            className="mt-2 w-full rounded-lg bg-slate-200 py-2 text-xs font-black text-pitch-950 transition active:scale-[0.98] disabled:opacity-40"
+          >
+            Join
+          </button>
         </form>
       </section>
 
-      <section className="grid grid-cols-4 gap-3">
+      <section className="grid grid-cols-4 gap-2">
         {[
-          { label: 'Matches', value: st.played, color: 'text-slate-200' },
-          { label: 'Wins', value: st.wins, color: 'text-emerald-400' },
-          { label: 'Losses', value: st.losses, color: 'text-rose-400' },
-          { label: 'Win rate', value: `${winRate}%`, color: 'text-sky-400' },
+          { label: 'Matches', value: st.played },
+          { label: 'Wins', value: st.wins, accent: 'text-emerald-400' },
+          { label: 'Losses', value: st.losses, accent: 'text-rose-400' },
+          { label: 'Win rate', value: `${winRate}%`, accent: 'text-sky-400' },
         ].map((s) => (
-          <div key={s.label} className="rounded-2xl border border-pitch-700 bg-pitch-900 p-4 text-center">
-            <div className={`text-2xl font-black ${s.color}`}>{s.value}</div>
-            <div className="mt-1 text-xs font-semibold uppercase tracking-wide text-slate-500">{s.label}</div>
+          <div key={s.label} className="glass-card-sm p-3 text-center">
+            <div className={`text-xl font-black ${s.accent ?? 'text-white'}`}>{s.value}</div>
+            <div className="mt-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500">{s.label}</div>
           </div>
         ))}
       </section>

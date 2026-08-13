@@ -1,11 +1,15 @@
 import { useEffect, useMemo, useState } from 'react';
-import type { LobbyState, Settings } from '../lib/types';
+import type { LobbyState } from '../lib/types';
 import { useSocket } from '../lib/socket';
 import { useUser } from '../lib/user';
 import { teamColor, cx } from '../lib/theme';
+import { AppHeader } from './ui/AppHeader';
+import { Avatar } from './ui/Avatar';
+import { Button } from './ui/Button';
+import { Lock, Check, X } from './ui/Icons';
 
 export default function GameView({ state }: { state: LobbyState }) {
-  const { answer } = useSocket();
+  const { answer, connected } = useSocket();
   const me = useUser();
   const q = state.question!;
   const stage = state.stage ?? 'question';
@@ -46,29 +50,32 @@ export default function GameView({ state }: { state: LobbyState }) {
   const doneCount = state.players.filter((p) => p.done).length;
 
   return (
-    <div className="mx-auto max-w-2xl space-y-4 pt-2">
+    <div className="space-y-3 pt-2">
+      <AppHeader connected={connected} showMenu={false} />
       <Scoreboard state={state} />
       <TimerBar timer={state.timer} />
 
       {state.phase === 'starting' && (
         <div className="py-16 text-center">
           <p className="text-sm font-bold uppercase tracking-widest text-slate-500">Get ready</p>
-          <p className="mt-2 text-6xl font-black text-emerald-400">🏆</p>
+          <p className="mt-4 text-6xl">🏆</p>
         </div>
       )}
 
       {(state.phase === 'playing' || state.phase === 'review') && q && (
         <>
-          <div className="rounded-2xl border border-pitch-700 bg-pitch-900 p-5">
-            <div className="flex items-center justify-between gap-2">
-              <span className="rounded-full bg-pitch-800 px-3 py-1 text-xs font-bold uppercase tracking-wide text-emerald-300">
-                {q.category}
-              </span>
+          <div className={cx('glass-card p-5', isBid && state.phase === 'playing' && 'border-purple-500/30')}>
+            <div className="flex flex-wrap items-center gap-2">
+              {isBid && state.phase === 'playing' && (
+                <span className="tag-pill border-purple-500/40 bg-purple-500/10 text-purple-300">Type: Bid</span>
+              )}
+              <span className="tag-pill">{q.category}</span>
               <span className="text-xs font-semibold text-slate-500">
-                Q {state.currentIndex + 1}/{state.questionCount} · {q.difficulty}
+                Q {state.currentIndex + 1} / {state.questionCount}
               </span>
+              <span className="tag-pill capitalize">{q.difficulty}</span>
             </div>
-            <h2 className="mt-3 text-xl font-black leading-snug text-slate-50">{q.question}</h2>
+            <h2 className="mt-3 text-lg font-black leading-snug text-white">{q.question}</h2>
 
             {state.phase === 'review' ? (
               <ReviewBox state={state} />
@@ -101,10 +108,10 @@ export default function GameView({ state }: { state: LobbyState }) {
             )}
           </div>
 
-          {answered && (
-            <div className="rounded-2xl border border-pitch-700 bg-pitch-900 p-4 text-center">
-              <p className="font-bold text-slate-200">🎯 Locked in!</p>
-              <p className="mt-1 text-sm text-slate-500">
+          {answered && state.phase === 'playing' && (
+            <div className="glass-card-sm p-4 text-center">
+              <p className="font-bold text-emerald-300">Locked in!</p>
+              <p className="mt-1 text-xs text-slate-500">
                 Waiting for others… {doneCount}/{state.players.length}
               </p>
             </div>
@@ -141,14 +148,14 @@ function McBody({
             disabled={answered}
             onClick={() => setSelected(i)}
             className={cx(
-              'flex w-full items-center gap-3 rounded-xl border px-4 py-3.5 text-left text-base font-bold transition',
+              'flex w-full items-center gap-3 rounded-xl border px-4 py-3.5 text-left text-sm font-bold transition',
               chosen === i
                 ? 'border-emerald-500 bg-emerald-500/15 text-emerald-200'
-                : 'border-pitch-700 bg-pitch-950 text-slate-200 hover:border-slate-500',
+                : 'border-pitch-bright bg-pitch-950/60 text-slate-200 hover:border-slate-500',
               answered && chosen !== i && 'opacity-40',
             )}
           >
-            <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-pitch-800 text-sm font-black text-slate-400">
+            <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-pitch-850 text-xs font-black text-slate-400">
               {String.fromCharCode(65 + i)}
             </span>
             {opt}
@@ -156,16 +163,18 @@ function McBody({
         );
       })}
       {selected !== null && !answered && (
-        <button
+        <Button
+          full
+          disabled={submitBusy}
+          icon={<Lock size={18} />}
+          className="mt-2"
           onClick={() => {
             setLocked(selected);
             onSubmit({ selected });
           }}
-          disabled={submitBusy}
-          className="mt-2 w-full rounded-xl bg-emerald-500 py-3.5 font-black text-pitch-950 transition active:scale-[0.98] disabled:opacity-50"
         >
           {submitBusy ? '…' : 'Lock in answer'}
-        </button>
+        </Button>
       )}
     </div>
   );
@@ -203,51 +212,47 @@ function BidBody({
   if (stage === 'question') {
     if (answered) {
       return (
-        <div className="mt-4 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-4 text-center">
-          <p className="text-lg font-black text-emerald-300">Bid locked: {myBid}</p>
-          <p className="mt-1 text-sm text-slate-400">Wait for everyone to bid — then you'll have 30s to name them!</p>
+        <div className="mt-4 rounded-xl border border-purple-500/30 bg-purple-500/10 p-4 text-center">
+          <p className="text-lg font-black text-purple-300">Bid locked: {myBid}</p>
+          <p className="mt-1 text-xs text-slate-400">Wait for everyone to bid — then you'll have 30s to name them!</p>
         </div>
       );
     }
     return (
-      <div className="mt-4 space-y-3">
-        <p className="text-sm text-slate-400">
-          Bid on how many you can name. You'll get <b className="text-emerald-300">{bid}</b> bonus points if you reach it —
-          then <b className="text-emerald-300">30 seconds</b> to type them.
-        </p>
+      <div className="mt-4 space-y-4">
+        <p className="text-center text-sm text-slate-400">How many answers can you name?</p>
         <div className="flex items-center justify-center gap-4">
-          <button onClick={() => setBid(Math.max(0, bid - 1))} className="grid size-12 place-items-center rounded-2xl bg-pitch-800 text-2xl font-black text-slate-200 active:scale-95">
+          <button onClick={() => setBid(Math.max(0, bid - 1))} className="grid size-12 place-items-center rounded-xl border border-pitch-bright bg-pitch-850 text-2xl font-black text-slate-200 active:scale-95">
             −
           </button>
-          <div className="w-24 rounded-2xl bg-pitch-950 py-3 text-center text-5xl font-black text-emerald-400">
+          <div className="w-20 rounded-xl bg-pitch-950 py-3 text-center text-5xl font-black text-purple-400">
             {bid}
           </div>
-          <button onClick={() => setBid(Math.min(20, bid + 1))} className="grid size-12 place-items-center rounded-2xl bg-pitch-800 text-2xl font-black text-slate-200 active:scale-95">
+          <button onClick={() => setBid(Math.min(20, bid + 1))} className="grid size-12 place-items-center rounded-xl border border-pitch-bright bg-pitch-850 text-2xl font-black text-slate-200 active:scale-95">
             +
           </button>
         </div>
-        <button
-          onClick={() => onSubmit('question', { bid })}
-          disabled={submitBusy}
-          className="w-full rounded-xl bg-emerald-500 py-3.5 font-black text-pitch-950 transition active:scale-[0.98] disabled:opacity-50"
-        >
+        <Button variant="purple" full disabled={submitBusy} onClick={() => onSubmit('question', { bid })}>
           {submitBusy ? '…' : 'Place bid'}
-        </button>
+        </Button>
+        <p className="text-center text-[11px] leading-relaxed text-slate-500">
+          Bid on how many you can name. Bonus points if you reach your bid — then 30 seconds to type them.
+        </p>
       </div>
     );
   }
 
   return (
     <div className="mt-4 space-y-3">
-      <div className="flex items-center justify-center gap-3 rounded-xl bg-pitch-950 p-3 text-sm font-bold">
+      <div className="flex items-center justify-center gap-3 rounded-xl bg-pitch-950/60 p-3 text-sm font-bold">
         <span className="text-slate-400">Your bid:</span>
-        <span className="text-xl font-black text-emerald-400">{myBid ?? '—'}</span>
+        <span className="text-xl font-black text-purple-400">{myBid ?? '—'}</span>
       </div>
       {others.length > 0 && (
         <div className="flex flex-wrap justify-center gap-1.5">
           {others.map((p) => (
-            <span key={p.userId} className="rounded-full bg-pitch-800 px-2.5 py-1 text-xs font-semibold text-slate-300">
-              {p.username}: <b className="text-emerald-300">{p.bid}</b>
+            <span key={p.userId} className="rounded-full bg-pitch-850 px-2.5 py-1 text-xs font-semibold text-slate-300">
+              {p.username}: <b className="text-purple-300">{p.bid}</b>
             </span>
           ))}
         </div>
@@ -258,7 +263,7 @@ function BidBody({
         disabled={answered}
         placeholder={'One per line, e.g.\nReal Madrid\nLiverpool'}
         rows={5}
-        className="w-full rounded-xl border border-pitch-700 bg-pitch-950 px-4 py-3 text-base placeholder:text-slate-600 focus:border-emerald-500"
+        className="input-field resize-none"
       />
       {suggestions && (
         <p className="text-xs text-slate-500">Official list has {suggestions.length} entries.</p>
@@ -270,13 +275,9 @@ function BidBody({
         </span>
       </div>
       {!answered && (
-        <button
-          onClick={() => onSubmit('action', { named: names.split(/[\n,]/).map((s) => s.trim()).filter(Boolean) })}
-          disabled={submitBusy}
-          className="w-full rounded-xl bg-emerald-500 py-3.5 font-black text-pitch-950 transition active:scale-[0.98] disabled:opacity-50"
-        >
+        <Button full disabled={submitBusy} onClick={() => onSubmit('action', { named: names.split(/[\n,]/).map((s) => s.trim()).filter(Boolean) })}>
           {submitBusy ? '…' : 'Submit answers'}
-        </button>
+        </Button>
       )}
     </div>
   );
@@ -287,31 +288,65 @@ function ReviewBox({ state }: { state: LobbyState }) {
   const q = state.question!;
   const isBid = q.type === 'bid';
   const reveal = q.view as { correct?: number; options?: string[]; suggestions?: string[] };
-  const my = state.answers?.find((a) => a.userId === me.id);
+  const answers = state.answers ?? [];
+
+  const correctText = isBid
+    ? 'Host decides — see official list'
+    : (reveal.options?.[reveal.correct ?? 0] ?? '?');
 
   return (
     <div className="mt-4 space-y-3">
       <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-4">
         <p className="text-xs font-bold uppercase tracking-wide text-emerald-300">Correct answer</p>
-        <p className="mt-1 text-lg font-black text-slate-50">
-          {isBid
-            ? 'Host decides — see the official list below'
-            : (reveal.options?.[reveal.correct ?? 0] ?? '?')}
-        </p>
+        <div className="mt-1 flex items-center gap-2">
+          <Check size={18} className="text-emerald-400" />
+          <p className="text-base font-black text-white">{correctText}</p>
+        </div>
         {isBid && reveal.suggestions && reveal.suggestions.length > 0 && (
-          <p className="mt-2 text-xs leading-relaxed text-slate-300">
+          <p className="mt-2 text-xs leading-relaxed text-slate-400">
             {reveal.suggestions.join(' · ')}
           </p>
         )}
       </div>
-      {my && (
-        <div className="rounded-xl bg-pitch-950 p-4 text-sm">
-          <p className="text-slate-400">
-            Your answer: <b className="text-slate-200">{my.summary}</b>
-          </p>
-          <p className={cx('mt-1 text-lg font-black', my.points > 0 ? 'text-emerald-400' : 'text-rose-400')}>
-            {my.points > 0 ? `+${my.points} points` : '0 points'}
-          </p>
+
+      <div className="space-y-2">
+        {answers.map((a) => {
+          const player = state.players.find((p) => p.userId === a.userId);
+          const correct = a.points > 0;
+          return (
+            <div key={a.userId} className="flex items-center gap-3 rounded-xl bg-pitch-950/50 px-3 py-2.5">
+              <Avatar name={player?.username ?? '?'} teamIdx={player?.team} size="sm" />
+              <span className="min-w-0 flex-1 truncate text-sm font-bold text-slate-200">
+                {player?.username ?? 'Unknown'}
+              </span>
+              <span className={cx('text-sm font-black', correct ? 'text-emerald-400' : 'text-slate-500')}>
+                {a.points > 0 ? `+${a.points}` : '0'} pts
+              </span>
+              <div className={cx(
+                'grid size-6 place-items-center rounded-full',
+                correct ? 'bg-emerald-500/20 text-emerald-400' : 'bg-rose-500/20 text-rose-400',
+              )}>
+                {correct ? <Check size={14} /> : <X size={14} />}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {answers.length === 0 && (
+        <div className="rounded-xl bg-pitch-950/50 p-4 text-sm">
+          {(() => {
+            const my = answers.find((a) => a.userId === me.id);
+            if (!my) return <p className="text-slate-500">Waiting for results…</p>;
+            return (
+              <>
+                <p className="text-slate-400">Your answer: <b className="text-slate-200">{my.summary}</b></p>
+                <p className={cx('mt-1 text-lg font-black', my.points > 0 ? 'text-emerald-400' : 'text-rose-400')}>
+                  {my.points > 0 ? `+${my.points} points` : '0 points'}
+                </p>
+              </>
+            );
+          })()}
         </div>
       )}
     </div>
@@ -334,14 +369,19 @@ export function TimerBar({ timer }: { timer: LobbyState['timer'] }) {
     timer.kind === 'start' ? 'Starting…' : timer.kind === 'question' ? 'Answer!' : timer.kind === 'action' ? 'Name them!' : 'Next up…';
 
   return (
-    <div className="rounded-2xl border border-pitch-700 bg-pitch-900 px-4 py-3">
-      <div className="flex items-center justify-between text-sm font-black">
-        <span className="uppercase tracking-widest text-slate-400 text-xs">{label}</span>
-        <span className={cx('font-mono text-xl', remaining <= 5 ? 'text-rose-400' : 'text-emerald-400')}>{remaining}s</span>
+    <div className="glass-card-sm px-4 py-3">
+      <div className="flex items-center justify-between">
+        <span className="text-xs font-black uppercase tracking-widest text-slate-400">{label}</span>
+        <span className={cx('font-mono text-lg font-black', remaining <= 5 ? 'text-rose-400' : 'text-emerald-400')}>
+          {remaining} s
+        </span>
       </div>
-      <div className="mt-2 h-2 overflow-hidden rounded-full bg-pitch-950">
+      <div className="score-bar mt-2">
         <div
-          className={cx('h-full rounded-full transition-[width] duration-200', remaining <= 5 ? 'bg-rose-500' : 'bg-emerald-500')}
+          className={cx(
+            'score-bar-fill',
+            remaining <= 5 && 'from-rose-600 to-rose-400',
+          )}
           style={{ width: `${pct}%` }}
         />
       </div>
@@ -362,18 +402,13 @@ function Scoreboard({ state }: { state: LobbyState }) {
     }
     const rows = [...byTeam.entries()].sort((a, b) => b[1].score - a[1].score);
     return (
-      <div className="no-scrollbar flex gap-2 overflow-x-auto">
+      <div className="no-scrollbar flex justify-center gap-3 overflow-x-auto py-1">
         {rows.map(([idx, e]) => (
-          <div
-            key={idx}
-            className="flex shrink-0 items-center gap-2 rounded-xl border bg-pitch-900 px-3 py-2"
-            style={{ borderColor: teamColor(idx) }}
-          >
-            <span className="text-sm font-black" style={{ color: teamColor(idx) }}>
+          <div key={idx} className="flex shrink-0 flex-col items-center gap-0.5">
+            <div className="grid size-9 place-items-center rounded-full text-xs font-black text-pitch-950" style={{ background: teamColor(idx) }}>
               T{idx + 1}
-            </span>
-            <span className="font-mono text-lg font-black text-slate-100">{e.score}</span>
-            <span className="text-xs text-slate-500">{e.count}p</span>
+            </div>
+            <span className="font-mono text-xs font-black text-emerald-400">{e.score}</span>
           </div>
         ))}
       </div>
@@ -381,18 +416,12 @@ function Scoreboard({ state }: { state: LobbyState }) {
   }
   const rows = [...state.players].sort((a, b) => b.score - a.score).slice(0, 4);
   return (
-    <div className="no-scrollbar flex gap-2 overflow-x-auto">
-      {rows.map((p, i) => (
-        <div
-          key={p.userId}
-          className={cx(
-            'flex shrink-0 items-center gap-2 rounded-xl border px-3 py-2 text-sm',
-            p.userId === me.id ? 'border-emerald-500/60 bg-emerald-500/10' : 'border-pitch-700 bg-pitch-900',
-          )}
-        >
-          <span className="font-mono text-xs text-slate-500">#{i + 1}</span>
-          <span className="max-w-24 truncate font-bold text-slate-200">{p.username}</span>
-          <span className="font-mono font-black text-emerald-400">{p.score}</span>
+    <div className="no-scrollbar flex justify-center gap-4 overflow-x-auto py-1">
+      {rows.map((p) => (
+        <div key={p.userId} className={cx('flex shrink-0 flex-col items-center gap-0.5', p.userId === me.id && 'scale-105')}>
+          <Avatar name={p.username} teamIdx={p.team} size="sm" />
+          <span className="max-w-14 truncate text-[10px] font-bold text-slate-400">{p.username}</span>
+          <span className="font-mono text-xs font-black text-emerald-400">{p.score}</span>
         </div>
       ))}
     </div>

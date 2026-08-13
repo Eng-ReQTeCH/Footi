@@ -2,8 +2,11 @@ import { useCallback, useEffect, useState } from 'react';
 import { api, ApiError } from '../lib/api';
 import type { Friend } from '../lib/types';
 import { cx } from '../lib/theme';
+import { AppHeader } from '../components/ui/AppHeader';
+import { useSocket } from '../lib/socket';
 
 export default function Friends() {
+  const { connected } = useSocket();
   const [tab, setTab] = useState<'friends' | 'requests' | 'add'>('friends');
   const [friends, setFriends] = useState<Friend[] | null>(null);
   const [requests, setRequests] = useState<{ id: number; username: string }[]>([]);
@@ -60,8 +63,9 @@ export default function Friends() {
   };
 
   return (
-    <div className="mx-auto max-w-2xl space-y-4 pt-2">
-      <div className="grid grid-cols-3 rounded-2xl bg-pitch-900 p-1 text-sm font-bold">
+    <div className="space-y-4 pt-2">
+      <AppHeader connected={connected} />
+      <div className="grid grid-cols-3 rounded-2xl border border-pitch-bright bg-pitch-900/80 p-1 text-sm font-bold">
         {(['friends', 'requests', 'add'] as const).map((t) => (
           <button
             key={t}
@@ -95,7 +99,7 @@ export default function Friends() {
             </div>
           ) : (
             friends.map((f) => (
-              <div key={f.id} className="flex items-center gap-3 rounded-2xl border border-pitch-700 bg-pitch-900 p-4">
+              <div key={f.id} className="glass-card-sm flex items-center gap-3 p-4">
                 <span className="grid size-11 place-items-center rounded-full bg-emerald-500/20 text-lg font-black text-emerald-300">
                   {f.username.charAt(0).toUpperCase()}
                 </span>
@@ -125,7 +129,7 @@ export default function Friends() {
             <p className="py-10 text-center text-sm text-slate-500">No pending requests.</p>
           ) : (
             requests.map((r) => (
-              <div key={r.id} className="flex items-center gap-3 rounded-2xl border border-pitch-700 bg-pitch-900 p-4">
+              <div key={r.id} className="glass-card-sm flex items-center gap-3 p-4">
                 <span className="grid size-11 place-items-center rounded-full bg-sky-500/20 text-lg font-black text-sky-300">
                   {r.username.charAt(0).toUpperCase()}
                 </span>
@@ -151,13 +155,13 @@ export default function Friends() {
       )}
 
       {tab === 'add' && (
-        <div className="rounded-2xl border border-pitch-700 bg-pitch-900 p-5">
+        <div className="glass-card p-5">
           <label className="text-xs font-bold uppercase tracking-wide text-slate-400">Search by username</label>
           <input
             value={query}
             onChange={(e) => search(e.target.value)}
             placeholder="e.g. messi10"
-            className="mt-2 w-full rounded-xl border border-pitch-700 bg-pitch-950 px-4 py-3 focus:border-emerald-500"
+            className="input-field mt-2"
           />
           <div className="mt-3 space-y-2">
             {results.map((u) => (

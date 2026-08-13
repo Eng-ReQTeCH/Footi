@@ -3,6 +3,10 @@ import type { LobbyState, Settings } from '../lib/types';
 import { useSocket } from '../lib/socket';
 import { useUser } from '../lib/user';
 import { teamColor, cx } from '../lib/theme';
+import { AppHeader } from './ui/AppHeader';
+import { Avatar } from './ui/Avatar';
+import { Button } from './ui/Button';
+import { Copy, Crown, Play } from './ui/Icons';
 
 const DIFFS = ['easy', 'medium', 'hard'] as const;
 const QUESTION_COUNTS = [5, 10, 15, 20];
@@ -10,12 +14,13 @@ const TIMES = [15, 20, 30, 45, 60];
 const PAUSES = [2, 4, 6];
 
 export default function LobbyView({ state }: { state: LobbyState }) {
-  const { updateSettings, start, kick, setTeam, leaveLobby } = useSocket();
+  const { updateSettings, start, kick, setTeam, leaveLobby, connected } = useSocket();
   const me = useUser();
   const [settings, setSettings] = useState<Settings>(state.settings);
   const [categories, setCategories] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
   const isHost = state.hostId === me.id;
 
   useEffect(() => {
@@ -47,12 +52,17 @@ export default function LobbyView({ state }: { state: LobbyState }) {
     }
   };
 
+  const copyCode = () => {
+    navigator.clipboard.writeText(state.code).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  };
+
   const splitEvenly = () => {
     const n = state.players.length;
     const sizes: number[] = [];
-    while (sizes.reduce((a, b) => a + b, 0) < n) {
-      sizes.push(1);
-    }
+    while (sizes.reduce((a, b) => a + b, 0) < n) sizes.push(1);
     while (true) {
       const biggest = sizes.indexOf(Math.max(...sizes));
       const smallest = sizes.indexOf(Math.min(...sizes));
@@ -64,216 +74,145 @@ export default function LobbyView({ state }: { state: LobbyState }) {
   };
 
   const players = [...state.players];
+  const codeSpaced = state.code.split('').join(' ');
 
   return (
-    <div className="space-y-4 pt-2 lg:grid lg:grid-cols-[1fr_380px] lg:items-start lg:gap-6">
-      <section className="rounded-2xl border border-pitch-700 bg-pitch-900 p-5">
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-xs font-bold uppercase tracking-widest text-slate-500">Lobby code</p>
-            <p className="font-mono text-4xl font-black tracking-[0.35em] text-emerald-400">{state.code}</p>
-          </div>
+    <div className="space-y-4 pt-2">
+      <AppHeader connected={connected} isHost={isHost} />
+
+      {/* Lobby code */}
+      <section className="glass-card p-5 text-center">
+        <p className="text-xs font-bold uppercase tracking-widest text-slate-500">Lobby</p>
+        <div className="mt-1 flex items-center justify-center gap-3">
+          <p className="font-mono text-4xl font-black tracking-[0.25em] text-emerald-400">{codeSpaced}</p>
           <button
-            onClick={leaveLobby}
-            className="rounded-xl border border-rose-500/40 px-4 py-2 text-sm font-bold text-rose-400 hover:bg-rose-950"
+            onClick={copyCode}
+            className="grid size-9 place-items-center rounded-lg border border-pitch-bright bg-pitch-850 text-slate-400 hover:text-emerald-400"
+            title="Copy code"
           >
-            Leave
+            <Copy size={16} />
           </button>
         </div>
+        <p className="mt-2 text-xs text-slate-500">
+          {copied ? 'Copied!' : 'Share this code with your friends'}
+        </p>
+      </section>
 
-        <div className="mt-4 flex flex-wrap items-center gap-2">
+      {/* Player list */}
+      <section className="glass-card p-4">
+        <div className="space-y-2">
           {players.map((p) => (
             <div
               key={p.userId}
-              className={cx(
-                'flex items-center gap-2 rounded-full border px-3 py-1.5 text-sm font-semibold',
-                p.userId === state.hostId ? 'border-emerald-500/50 bg-emerald-500/10 text-emerald-300' : 'border-pitch-700 bg-pitch-950 text-slate-300',
-              )}
-              style={p.team !== null ? { borderColor: teamColor(p.team), color: teamColor(p.team) } : undefined}
+              className="flex items-center gap-3 rounded-xl bg-pitch-950/50 px-3 py-2.5"
             >
-              <span
-                className={cx('size-2 rounded-full', p.connected ? 'bg-emerald-400' : 'bg-slate-600')}
-              />
-              {p.username}
-              {p.userId === state.hostId && ' 👑'}
+              <Avatar name={p.username} teamIdx={p.team} size="sm" />
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-1.5">
+                  <span className="truncate text-sm font-bold text-slate-100">{p.username}</span>
+                  {p.userId === state.hostId && (
+                    <Crown size={14} className="shrink-0 text-amber-400" />
+                  )}
+                </div>
+              </div>
+              <span className={cx('size-2 shrink-0 rounded-full', p.connected ? 'bg-emerald-500' : 'bg-slate-600')} />
               {isHost && p.userId !== state.hostId && (
                 <button
                   onClick={() => kick(p.userId)}
-                  className="ml-1 text-xs text-rose-400 hover:text-rose-300"
-                  title="Kick"
+                  className="shrink-0 rounded-lg border border-rose-500/30 px-2.5 py-1 text-xs font-bold text-rose-400 hover:bg-rose-950"
                 >
-                  ✕
+                  Kick
                 </button>
               )}
             </div>
           ))}
-          <span className="text-xs text-slate-500">{players.length}/12</span>
         </div>
-
-        {settings.mode === 'teams' && (
-          <div className="mt-5 space-y-2">
-            <div className="flex items-center justify-between">
-              <p className="text-sm font-bold text-slate-300">Teams</p>
-              {isHost && (
-                <button
-                  onClick={splitEvenly}
-                  className="rounded-lg border border-pitch-700 px-2.5 py-1 text-xs font-bold text-slate-300 hover:bg-pitch-800"
-                >
-                  Split evenly
-                </button>
-              )}
-            </div>
-            <div className="grid gap-2 sm:grid-cols-2">
-              {settings.teamSizes.map((size, i) => (
-                <div key={i} className="rounded-xl border bg-pitch-950 p-3" style={{ borderColor: teamColor(i) }}>
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-black" style={{ color: teamColor(i) }}>
-                      Team {i + 1}
-                    </span>
-                    <span className="text-xs text-slate-500">{players.filter((p) => p.team === i).length}/{size}</span>
-                  </div>
-                  <div className="mt-2 flex flex-wrap gap-1.5">
-                    {players
-                      .filter((p) => p.team === i)
-                      .map((p) => (
-                        <span key={p.userId} className="rounded-full bg-pitch-900 px-2 py-0.5 text-xs font-semibold text-slate-300">
-                          {p.username}
-                          {isHost && (
-                            <button
-                              onClick={() => setTeam(p.userId, null)}
-                              className="ml-1 text-slate-500 hover:text-rose-400"
-                              title="Unassign"
-                            >
-                              ✕
-                            </button>
-                          )}
-                        </span>
-                      ))}
-                    {isHost &&
-                      players
-                        .filter((p) => p.team !== i && p.team !== null && p.team !== undefined)
-                        .map(
-                          (p) =>
-                            players.filter((x) => x.team === i).length < size && (
-                              <button
-                                key={p.userId}
-                                onClick={() => setTeam(p.userId, i)}
-                                className="rounded-full border border-dashed border-slate-700 px-2 py-0.5 text-xs text-slate-500 hover:text-slate-300"
-                              >
-                                +{p.username}
-                              </button>
-                            ),
-                        )}
-                  </div>
-                </div>
-              ))}
-              {settings.teamSizes.length === 0 && (
-                <p className="text-sm text-slate-500">
-                  No teams yet — pick team sizes in the settings (host).
-                </p>
-              )}
-            </div>
-            <div className="flex flex-wrap gap-1.5">
-              {players
-                .filter((p) => p.team === null)
-                .map((p) => (
-                  <span key={p.userId} className="rounded-full bg-pitch-800 px-2.5 py-1 text-xs font-semibold text-slate-400">
-                    {p.username} — unassigned
-                    {isHost && (
-                      <span className="ml-1">
-                        {settings.teamSizes.map((_, i) => (
-                          <button
-                            key={i}
-                            onClick={() => setTeam(p.userId, i)}
-                            className="ml-1 text-slate-500 hover:text-white"
-                            style={{ color: teamColor(i) }}
-                          >
-                            T{i + 1}
-                          </button>
-                        ))}
-                      </span>
-                    )}
-                  </span>
-                ))}
-            </div>
-          </div>
-        )}
+        <p className="mt-3 text-center text-xs text-slate-500">{players.length} / 12 players</p>
       </section>
 
-      <section className="rounded-2xl border border-pitch-700 bg-pitch-900 p-5">
-        <h2 className="text-lg font-black text-slate-100">Game settings</h2>
-        <p className="mt-0.5 text-xs text-slate-500">{isHost ? 'You are the host — changes apply live' : 'Host controls these'}</p>
+      {/* Teams panel */}
+      {settings.mode === 'teams' && (
+        <section className="glass-card p-4">
+          <div className="mb-3 flex items-center justify-between">
+            <p className="text-sm font-bold text-slate-300">Teams</p>
+            {isHost && (
+              <button onClick={splitEvenly} className="rounded-lg border border-pitch-bright px-2.5 py-1 text-xs font-bold text-slate-300 hover:bg-pitch-800">
+                Split evenly
+              </button>
+            )}
+          </div>
+          <div className="grid gap-2">
+            {settings.teamSizes.map((size, i) => (
+              <div key={i} className="rounded-xl border bg-pitch-950/50 p-3" style={{ borderColor: teamColor(i) }}>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-black" style={{ color: teamColor(i) }}>Team {i + 1}</span>
+                  <span className="text-xs text-slate-500">{players.filter((p) => p.team === i).length}/{size}</span>
+                </div>
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {players.filter((p) => p.team === i).map((p) => (
+                    <span key={p.userId} className="rounded-full bg-pitch-900 px-2 py-0.5 text-xs font-semibold text-slate-300">
+                      {p.username}
+                      {isHost && (
+                        <button onClick={() => setTeam(p.userId, null)} className="ml-1 text-slate-500 hover:text-rose-400">✕</button>
+                      )}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
 
-        <div className="mt-4 space-y-5">
-          <SettingGroup label="Mode">
-            <div className="grid grid-cols-2 gap-2">
-              {(['ffa', 'teams'] as const).map((m) => (
-                <button
-                  key={m}
-                  disabled={!isHost}
-                  onClick={() =>
-                    save({ ...settings, mode: m, teamSizes: m === 'teams' && settings.teamSizes.length === 0 ? [2, 2] : settings.teamSizes })
-                  }
-                  className={cx(
-                    'rounded-xl border px-3 py-2.5 text-sm font-bold transition',
-                    settings.mode === m
-                      ? 'border-emerald-500 bg-emerald-500/15 text-emerald-300'
-                      : 'border-pitch-700 text-slate-400 disabled:opacity-50',
-                  )}
-                >
-                  {m === 'ffa' ? 'Free for all' : 'Teams'}
-                </button>
-              ))}
-            </div>
-          </SettingGroup>
+      {/* Settings */}
+      <section className="glass-card p-4">
+        <h2 className="text-sm font-black text-slate-100">Game settings</h2>
+        <p className="mt-0.5 text-xs text-slate-500">{isHost ? 'Changes apply live' : 'Host controls these'}</p>
 
-          <SettingGroup label="Questions">
-            <div className="flex flex-wrap gap-2">
-              {QUESTION_COUNTS.map((n) => (
-                <Chip
-                  key={n}
-                  active={settings.questionCount === n}
-                  disabled={!isHost}
-                  onClick={() => save({ ...settings, questionCount: n })}
-                >
-                  {n}
-                </Chip>
-              ))}
-            </div>
-          </SettingGroup>
+        <div className="mt-4 space-y-4">
+          <SettingRow label="Mode">
+            <SelectToggle
+              value={settings.mode}
+              options={[
+                { value: 'ffa', label: 'Free-for-all' },
+                { value: 'teams', label: 'Teams' },
+              ]}
+              disabled={!isHost}
+              onChange={(v) =>
+                save({ ...settings, mode: v as 'ffa' | 'teams', teamSizes: v === 'teams' && settings.teamSizes.length === 0 ? [2, 2] : settings.teamSizes })
+              }
+            />
+          </SettingRow>
 
-          <SettingGroup label={`Seconds per question — ${settings.secondsPerQuestion}s`}>
-            <div className="flex flex-wrap gap-2">
-              {TIMES.map((t) => (
-                <Chip
-                  key={t}
-                  active={settings.secondsPerQuestion === t}
-                  disabled={!isHost}
-                  onClick={() => save({ ...settings, secondsPerQuestion: t })}
-                >
-                  {t}
-                </Chip>
-              ))}
-            </div>
-          </SettingGroup>
+          <SettingRow label="Questions">
+            <SelectToggle
+              value={String(settings.questionCount)}
+              options={QUESTION_COUNTS.map((n) => ({ value: String(n), label: String(n) }))}
+              disabled={!isHost}
+              onChange={(v) => save({ ...settings, questionCount: Number(v) })}
+            />
+          </SettingRow>
 
-          <SettingGroup label={`Pause between questions — ${settings.pauseSeconds}s`}>
-            <div className="flex flex-wrap gap-2">
-              {PAUSES.map((p) => (
-                <Chip
-                  key={p}
-                  active={settings.pauseSeconds === p}
-                  disabled={!isHost}
-                  onClick={() => save({ ...settings, pauseSeconds: p })}
-                >
-                  {p}
-                </Chip>
-              ))}
-            </div>
-          </SettingGroup>
+          <SettingRow label="Seconds per question">
+            <SelectToggle
+              value={String(settings.secondsPerQuestion)}
+              options={TIMES.map((t) => ({ value: String(t), label: `${t}s` }))}
+              disabled={!isHost}
+              onChange={(v) => save({ ...settings, secondsPerQuestion: Number(v) })}
+            />
+          </SettingRow>
 
-          <SettingGroup label="Difficulty">
-            <div className="flex flex-wrap gap-2">
+          <SettingRow label="Pause between">
+            <SelectToggle
+              value={String(settings.pauseSeconds)}
+              options={PAUSES.map((p) => ({ value: String(p), label: `${p}s` }))}
+              disabled={!isHost}
+              onChange={(v) => save({ ...settings, pauseSeconds: Number(v) })}
+            />
+          </SettingRow>
+
+          <SettingRow label="Difficulty">
+            <div className="flex flex-wrap gap-1.5">
               {DIFFS.map((d) => {
                 const on = settings.difficulties.includes(d);
                 return (
@@ -281,16 +220,11 @@ export default function LobbyView({ state }: { state: LobbyState }) {
                     key={d}
                     disabled={!isHost}
                     onClick={() =>
-                      save({
-                        ...settings,
-                        difficulties: on
-                          ? settings.difficulties.filter((x) => x !== d)
-                          : [...settings.difficulties, d],
-                      })
+                      save({ ...settings, difficulties: on ? settings.difficulties.filter((x) => x !== d) : [...settings.difficulties, d] })
                     }
                     className={cx(
-                      'rounded-xl border px-3 py-2 text-sm font-bold capitalize transition',
-                      on ? 'border-emerald-500 bg-emerald-500/15 text-emerald-300' : 'border-pitch-700 text-slate-400 disabled:opacity-50',
+                      'rounded-lg border px-2.5 py-1.5 text-xs font-bold capitalize transition',
+                      on ? 'border-emerald-500 bg-emerald-500/15 text-emerald-300' : 'border-pitch-bright text-slate-500 disabled:opacity-50',
                     )}
                   >
                     {d}
@@ -298,21 +232,17 @@ export default function LobbyView({ state }: { state: LobbyState }) {
                 );
               })}
             </div>
-          </SettingGroup>
+          </SettingRow>
 
-          <SettingGroup label="Categories">
-            {categories.length === 0 ? (
-              <p className="text-sm text-slate-500">No questions imported yet.</p>
-            ) : (
-              <div className="flex flex-wrap gap-2">
+          {categories.length > 0 && (
+            <SettingRow label="Categories">
+              <div className="flex flex-wrap gap-1.5">
                 <button
                   disabled={!isHost}
                   onClick={() => save({ ...settings, categories: [] })}
                   className={cx(
-                    'rounded-xl border px-3 py-1.5 text-xs font-bold',
-                    settings.categories.length === 0
-                      ? 'border-emerald-500 bg-emerald-500/15 text-emerald-300'
-                      : 'border-pitch-700 text-slate-400',
+                    'rounded-lg border px-2.5 py-1.5 text-xs font-bold',
+                    settings.categories.length === 0 ? 'border-emerald-500 bg-emerald-500/15 text-emerald-300' : 'border-pitch-bright text-slate-500',
                   )}
                 >
                   All
@@ -324,16 +254,11 @@ export default function LobbyView({ state }: { state: LobbyState }) {
                       key={c}
                       disabled={!isHost}
                       onClick={() =>
-                        save({
-                          ...settings,
-                          categories: on
-                            ? settings.categories.filter((x) => x !== c)
-                            : [...settings.categories, c],
-                        })
+                        save({ ...settings, categories: on ? settings.categories.filter((x) => x !== c) : [...settings.categories, c] })
                       }
                       className={cx(
-                        'rounded-xl border px-3 py-1.5 text-xs font-bold',
-                        on ? 'border-emerald-500 bg-emerald-500/15 text-emerald-300' : 'border-pitch-700 text-slate-400 disabled:opacity-50',
+                        'rounded-lg border px-2.5 py-1.5 text-xs font-bold',
+                        on ? 'border-emerald-500 bg-emerald-500/15 text-emerald-300' : 'border-pitch-bright text-slate-500 disabled:opacity-50',
                       )}
                     >
                       {c}
@@ -341,17 +266,15 @@ export default function LobbyView({ state }: { state: LobbyState }) {
                   );
                 })}
               </div>
-            )}
-          </SettingGroup>
+            </SettingRow>
+          )}
 
           {settings.mode === 'teams' && (
-            <SettingGroup label="Team sizes">
+            <SettingRow label="Team sizes">
               <div className="flex flex-wrap items-center gap-2">
                 {settings.teamSizes.map((size, i) => (
-                  <div key={i} className="flex items-center gap-1 rounded-xl border border-pitch-700 px-2 py-1.5">
-                    <span className="text-xs font-black" style={{ color: teamColor(i) }}>
-                      T{i + 1}
-                    </span>
+                  <div key={i} className="flex items-center gap-1 rounded-lg border border-pitch-bright px-2 py-1">
+                    <span className="text-xs font-black" style={{ color: teamColor(i) }}>T{i + 1}</span>
                     <input
                       type="number"
                       min={1}
@@ -363,48 +286,44 @@ export default function LobbyView({ state }: { state: LobbyState }) {
                         sizes[i] = Math.max(1, Math.min(6, Number(e.target.value) || 1));
                         save({ ...settings, teamSizes: sizes });
                       }}
-                      className="w-10 rounded bg-pitch-950 px-1 py-0.5 text-center text-sm font-bold text-slate-200 disabled:opacity-50"
+                      className="w-8 rounded bg-pitch-950 px-1 py-0.5 text-center text-sm font-bold text-slate-200 disabled:opacity-50"
                     />
                     {isHost && (
-                      <button
-                        onClick={() => save({ ...settings, teamSizes: settings.teamSizes.filter((_, j) => j !== i) })}
-                        className="text-xs text-rose-400"
-                      >
-                        ✕
-                      </button>
+                      <button onClick={() => save({ ...settings, teamSizes: settings.teamSizes.filter((_, j) => j !== i) })} className="text-xs text-rose-400">✕</button>
                     )}
                   </div>
                 ))}
                 {isHost && settings.teamSizes.length < 8 && (
                   <button
                     onClick={() => save({ ...settings, teamSizes: [...settings.teamSizes, 2] })}
-                    className="rounded-xl border border-dashed border-slate-600 px-3 py-1.5 text-xs font-bold text-slate-400 hover:text-slate-200"
+                    className="rounded-lg border border-dashed border-slate-600 px-2 py-1 text-xs font-bold text-slate-500"
                   >
                     + team
                   </button>
                 )}
               </div>
-            </SettingGroup>
-          )}
-
-          {error && <p className="text-sm font-semibold text-rose-400">{error}</p>}
-
-          {isHost && (
-            <button
-              onClick={doStart}
-              disabled={busy || players.length < 2}
-              className="w-full rounded-2xl bg-emerald-500 py-4 text-lg font-black text-pitch-950 transition active:scale-[0.98] disabled:opacity-40"
-            >
-              {busy ? '…' : `Start game (${players.length} players)`}
-            </button>
-          )}
-          {!isHost && (
-            <p className="text-center text-sm text-slate-500">
-              Waiting for <span className="font-bold text-slate-300">{hostName(state)}</span> to start…
-            </p>
+            </SettingRow>
           )}
         </div>
+
+        {error && <p className="mt-3 text-sm font-semibold text-rose-400">{error}</p>}
       </section>
+
+      {/* Actions */}
+      <div className="space-y-2 pb-4">
+        {isHost ? (
+          <Button full disabled={busy || players.length < 2} onClick={doStart} icon={<Play size={18} />} className="py-4 text-base">
+            {busy ? '…' : 'Start game'}
+          </Button>
+        ) : (
+          <p className="py-4 text-center text-sm text-slate-500">
+            Waiting for <span className="font-bold text-slate-300">{hostName(state)}</span> to start…
+          </p>
+        )}
+        <Button variant="ghost" full onClick={leaveLobby} className="text-rose-400">
+          Leave lobby
+        </Button>
+      </div>
     </div>
   );
 }
@@ -413,36 +332,36 @@ function hostName(state: LobbyState): string {
   return state.players.find((p) => p.userId === state.hostId)?.username ?? 'host';
 }
 
-function SettingGroup({ label, children }: { label: string; children: React.ReactNode }) {
+function SettingRow({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div>
-      <p className="mb-2 text-xs font-bold uppercase tracking-wide text-slate-400">{label}</p>
-      {children}
+    <div className="flex items-center justify-between gap-3">
+      <span className="shrink-0 text-xs font-semibold text-slate-400">{label}</span>
+      <div className="min-w-0">{children}</div>
     </div>
   );
 }
 
-function Chip({
-  active,
+function SelectToggle({
+  value,
+  options,
   disabled,
-  onClick,
-  children,
+  onChange,
 }: {
-  active: boolean;
+  value: string;
+  options: { value: string; label: string }[];
   disabled?: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
+  onChange: (v: string) => void;
 }) {
   return (
-    <button
+    <select
+      value={value}
       disabled={disabled}
-      onClick={onClick}
-      className={cx(
-        'rounded-xl border px-3 py-2 text-sm font-bold transition',
-        active ? 'border-emerald-500 bg-emerald-500/15 text-emerald-300' : 'border-pitch-700 text-slate-400 disabled:opacity-50',
-      )}
+      onChange={(e) => onChange(e.target.value)}
+      className="rounded-lg border border-pitch-bright bg-pitch-950/80 px-3 py-1.5 text-xs font-bold text-slate-200 disabled:opacity-50"
     >
-      {children}
-    </button>
+      {options.map((o) => (
+        <option key={o.value} value={o.value}>{o.label}</option>
+      ))}
+    </select>
   );
 }

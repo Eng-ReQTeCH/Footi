@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { api, ApiError, type Me } from './lib/api';
 import { useSocket } from './lib/socket';
 import { UserProvider } from './lib/user';
@@ -15,6 +15,7 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const { toast, clearToast } = useSocket();
   const location = useLocation();
+  const inRoom = location.pathname === '/room';
 
   useEffect(() => {
     api<Me>('/api/me')
@@ -27,8 +28,8 @@ export default function App() {
 
   if (loading) {
     return (
-      <div className="flex h-full items-center justify-center text-emerald-400 text-lg font-bold">
-        Footi…
+      <div className="flex h-full items-center justify-center">
+        <div className="animate-pulse-soft text-2xl font-black italic text-emerald-400">FOOTI</div>
       </div>
     );
   }
@@ -40,28 +41,7 @@ export default function App() {
 
   return (
     <UserProvider value={me}>
-      <div className="min-h-full pb-16 lg:pb-0">
-      <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-pitch-700 bg-pitch-900/95 backdrop-blur lg:top-0 lg:bottom-auto lg:border-b lg:border-t-0">
-        <div className="mx-auto flex max-w-5xl items-center justify-around lg:justify-between px-4 py-2.5">
-          <span className="hidden lg:block font-black text-emerald-400 text-xl tracking-tight">
-            FOOTI<span className="text-slate-400">/</span>
-          </span>
-          <div className="flex items-center gap-1 lg:gap-2 text-xs lg:text-sm font-semibold">
-            <NavTab to="/" label="Play" />
-            <NavTab to="/friends" label="Friends" />
-            <NavTab to="/history" label="History" />
-            <NavTab to="/admin" label="Admin" />
-          </div>
-          <span className="hidden lg:flex items-center gap-2 text-sm text-slate-300">
-            <span className="grid size-8 place-items-center rounded-full bg-emerald-500 text-pitch-950 font-black">
-              {me.username.charAt(0).toUpperCase()}
-            </span>
-            {me.username}
-          </span>
-        </div>
-      </nav>
-
-      <div className="mx-auto max-w-5xl px-4 pt-4 lg:pt-20">
+      <div className={`mx-auto min-h-full max-w-lg px-4 ${inRoom ? 'pb-6' : 'pb-6'}`}>
         <Routes>
           <Route path="/login" element={<Auth onAuthed={setMe} />} />
           <Route path="/" element={<Home me={me} />} />
@@ -77,29 +57,12 @@ export default function App() {
         <div className="fixed inset-x-0 top-4 z-50 flex justify-center px-4">
           <button
             onClick={clearToast}
-            className="max-w-md rounded-xl border border-rose-500/40 bg-rose-950 px-4 py-2.5 text-sm font-semibold text-rose-100 shadow-lg"
+            className="max-w-md animate-fade-up rounded-xl border border-rose-500/40 bg-rose-950/95 px-4 py-2.5 text-sm font-semibold text-rose-100 shadow-lg backdrop-blur-sm"
           >
             {toast}
           </button>
         </div>
       )}
-    </div>
     </UserProvider>
-  );
-}
-
-function NavTab({ to, label }: { to: string; label: string }) {
-  const location = useLocation();
-  const navigate = useNavigate();
-  const active = location.pathname === to;
-  return (
-    <button
-      onClick={() => navigate(to)}
-      className={`rounded-lg px-3 py-2 transition-colors ${
-        active ? 'bg-emerald-500 text-pitch-950' : 'text-slate-300 hover:bg-pitch-800 hover:text-white'
-      }`}
-    >
-      {label}
-    </button>
   );
 }

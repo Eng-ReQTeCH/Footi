@@ -429,7 +429,7 @@ export class LobbyManager {
 
   private startGuessWho(l: Lobby) {
     const pool = this.playerData.guessWhoPlayers;
-    const grid = pickUniquePlayers(pool, GUESS_GRID_SIZE);
+    const grid = pickUniquePlayers(pool, GUESS_GRID_SIZE, guessWeight);
     if (grid.length === 0) throw new LobbyError('No players available for Guess Who');
     const targets = shuffle(grid);
     const secrets = new Map<number, number>();
@@ -507,7 +507,7 @@ export class LobbyManager {
       (p) => p.position === slot.position && !g.usedPlayerIds.has(p.id),
     );
     const pool = candidates.length > 0 ? candidates : this.playerData.players.filter((p) => p.position === slot.position);
-    const player = pool[randomInt(pool.length)];
+    const player = pickWeighted(pool, auctionWeight);
     g.usedPlayerIds.add(player.id);
     return { kind: 'player', player };
   }
@@ -1238,13 +1238,48 @@ function standings0(i: number, sorted: { score: number }[]): number {
   return p + 1;
 }
 
-function pickUniquePlayers(pool: PoolPlayer[], count: number): PoolPlayer[] {
+const auctionWeight = (p: PoolPlayer): number => {
+  const r = Math.max(0, p.rating ?? 0);
+  const mvM = Math.max(0, p.highestMV ?? 0) / 1_000_000;
+  return 1 + r * r + mvM * mvM;
+};
+
+const guessWeight = (p: PoolPlayer): number => {
+  const r = Math.max(0, p.rating ?? 0);
+  const mvM = Math.max(0, p.highestMV ?? 0) / 1_000_000;
+  return 1 + r * r / 10 + mvM;
+};
+
+function weightedIndex<T>(pool: T[], weight: (x: T) => number): number {
+  let total = 0;
+  const weights = pool.map((x) => {
+    const w = Math.max(0, weight(x));
+    total += w;
+    return w;
+  });
+  if (total <= 0) return randomInt(pool.length);
+  let r = Math.random() * total;
+  for (let i = 0; i < pool.length; i++) {
+    r -= weights[i];
+    if (r <= 0) return i;
+  }
+  return pool.length - 1;
+}
+
+function pickWeighted<T>(pool: T[], weight: (x: T) => number): T {
+  return pool[weightedIndex(pool, weight)];
+}
+
+function pickUniquePlayers(pool: PoolPlayer[], count: number, weight?: (p: PoolPlayer) => number): PoolPlayer[] {
   const picked: PoolPlayer[] = [];
   const seen = new Set<number>();
+  const available = pool.slice();
   let guard = 0;
-  while (picked.length < count && guard < 5000) {
+  while (picked.length < count && available.length > 0 && guard < 5000) {
     guard++;
-    const p = pool[randomInt(pool.length)];
+    const idx = weight ? weightedIndex(available, weight) : randomInt(available.length);
+    const p = available[idx];
+    available.splice(idx, 1);
     if (!p || seen.has(p.id)) continue;
     seen.add(p.id);
     picked.push(p);

@@ -1,12 +1,18 @@
 # Footi — UI/UX Design Brief
 
-A complete visual redesign brief for **Footi**, a self-hosted multiplayer soccer trivia party game.
+A complete visual redesign brief for **Footi**, a self-hosted multiplayer soccer party game.
 
 ---
 
 ## 1. Product overview
 
-Footi is a real-time, browser-based trivia game for small groups of friends (2–12 players). One person **hosts** a game from their phone or laptop; friends **join** with a 3-digit lobby code; everyone answers soccer trivia in real time; and the **host judges every answer manually**, awarding points with the final say. It is social-first: players track wins/losses against friends, keep match history, and can build a custom question bank.
+Footi is a real-time, browser-based party game for small groups of friends (2–12 players). One person **hosts** a game from their phone or laptop; friends **join** with a 3-digit lobby code. There are three game types:
+
+- **Trivia** — soccer trivia in real time; the **host judges every answer manually**, awarding points with the final say.
+- **Guess Who** — a 24-player grid of stars; each player has a secret player and eliminates grid cards by asking real-life questions; the host crowns the round's winner.
+- **Auction draft** — every player drafts a starting XI by bidding on star players (and a manager) with a 300M € budget; the host crowns the best squad, optionally with an LLM-generated judging prompt.
+
+It is social-first: players track wins/losses against friends, keep match history, and can build a custom question bank.
 
 It is a single-page web app, mobile-first in practice (people play on phones), fully dark-themed. All game state is pushed live over WebSockets — every player's screen stays in sync in real time.
 
@@ -20,22 +26,18 @@ It is a single-page web app, mobile-first in practice (people play on phones), f
 2. Host creates a lobby → gets a **3-digit code** (also in the URL).
 3. Friends enter the code and join; everyone sees who's in the room.
 4. Host configures the game:
-   - **Mode:** Free-for-all or Teams
-   - **Number of questions:** 5 / 10 / 15 / 20
-   - **Seconds per question:** 15 / 20 / 30 / 45 / 60
-   - **Pause between questions:** 2 / 4 / 6 s
-   - **Difficulties:** any mix of easy / medium / hard
-   - **Categories:** any subset of the question bank
-   - **Team sizes** (team mode only)
+   - **Game type:** Trivia / Guess Who / Auction draft
+   - **Trivia only:** mode (Free-for-all or Teams), number of questions (5 / 10 / 15 / 20), seconds per question (15 / 20 / 30 / 45 / 60), pause between questions (2 / 4 / 6 s), difficulties, categories, team sizes (team mode only)
 5. Host starts → 3-second countdown.
-6. Each question:
+6. **Trivia** proceeds round by round (steps 7–11). **Guess Who** and **Auction draft** follow their own flows — see §3.11 and §3.12.
+7. Each question:
    - Question appears with a **countdown timer**.
    - **Multiple choice:** pick one of A/B/C/D.
    - **Bid questions:** first place a *bid* ("how many answers can you name?"), then get **30 seconds** to type answers (one per line).
-7. **Judge phase (the heart of the game):** the host sees every answer, marks bid answers correct/incorrect, and awards points. Suggestions are pre-filled, but the host has the final say.
-8. **Review phase:** everyone sees the correct answer and their points for that question.
-9. After the last question: **final standings** screen.
-10. The match is saved to history; win/loss/draw records update per-friend.
+8. **Judge phase (the heart of the game):** the host sees every answer, marks bid answers correct/incorrect, and awards points. Suggestions are pre-filled, but the host has the final say.
+9. **Review phase:** everyone sees the correct answer and their points for that question.
+10. After the last question: **final standings** screen.
+11. The match is saved to history; win/loss/draw records update per-friend.
 
 **The judge being a human is a feature, not a limitation** — it makes the game social and forgiving ("that's close enough!").
 
@@ -131,6 +133,21 @@ Each screen below describes the current UI, its purpose, and what to preserve. S
 - Create/edit form: question text, JSON answer payload, category, type, difficulty.
 - Question list with Edit / Delete.
 - Note for the designer: this is an internal/power-user screen; visual polish is lower priority than the gameplay screens.
+
+### 3.11 Game — Guess Who
+- **Purpose:** eliminate grid cards until each player guesses the others' secret players.
+- **Secret player card:** each player's assigned player (image, name, position) shown at the top — "Your secret player".
+- **The grid:** 24 star players from the Guess Who pool (weighted toward top-rated/high-value names), in a 3–6 column responsive grid. Tapping a card **crosses it out** (red X, dimmed). Cards show player photo + name.
+- **End of round:** the host taps **"End round & pick winner"**; a crown screen lets the host tap a player to declare the winner. Non-hosts wait on the host.
+
+### 3.12 Game — Auction draft
+- **Purpose:** draft a starting XI by bidding on stars.
+- **Budget + slot strip:** remaining budget (mono, emerald) and current slot ("1/13 · Goalkeeper" etc.).
+- **Offered player card:** the star (or manager) up for auction, with a 60 s bid timer.
+- **Bid phase:** quick-bid chips (0/5/10/20/50M), a numeric input capped at your budget, and a **"Place bid"** button. Host can end the round early.
+- **Reveal:** highest bidder wins and pays their bid; everyone else gets a **random replacement** (shown per-player). Host advances to the next slot or **finalizes squads**.
+- **LLM judge:** at the end, a **copy prompt** button copies a generated judging prompt (paste into ChatGPT/Gemini etc.); the host then taps a player to crown the best squad.
+- **My squad:** always-visible roster of your manager, GK, defenders, midfielders, attackers and super sub.
 
 ---
 

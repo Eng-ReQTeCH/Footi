@@ -20,6 +20,7 @@ interface SocketCtx {
   bid: (amount: number) => Promise<void>;
   reveal: () => Promise<void>;
   nextSlot: () => Promise<void>;
+  pickWinner: (userId: number) => Promise<void>;
   clearToast: () => void;
 }
 
@@ -109,6 +110,9 @@ export function SocketProvider({ children }: { children: ReactNode }) {
     },
     nextSlot: async () => {
       await emit('lobby:nextSlot');
+    },
+    pickWinner: async (userId) => {
+      await emit('lobby:pickWinner', userId);
     },
   };
 

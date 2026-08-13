@@ -10,6 +10,7 @@ const LOBBY_TTL_EMPTY_MS = 10 * 60_000;
 const LOBBY_TTL_FINISHED_MS = 10 * 60_000;
 const AUCTION_BUDGET = 300;
 const AUCTION_BID_SECONDS = 60;
+const AUCTION_WINNER_SECONDS = 120;
 const GUESS_LIVES = 3;
 const GUESS_GRID_SIZE = 24;
 
@@ -105,11 +106,11 @@ interface Player {
   answerPayload: unknown;
 }
 
-type Phase = 'lobby' | 'starting' | 'playing' | 'judging' | 'review' | 'results' | 'guesswho' | 'auction_bid' | 'auction_reveal';
+type Phase = 'lobby' | 'starting' | 'playing' | 'judging' | 'review' | 'results' | 'guesswho' | 'auction_bid' | 'auction_reveal' | 'auction_winner';
 type Stage = 'question' | 'action';
 
 interface Timer {
-  kind: 'start' | 'question' | 'action' | 'review' | 'bid';
+  kind: 'start' | 'question' | 'action' | 'review' | 'bid' | 'winner';
   endAt: number;
   duration: number;
 }
@@ -674,6 +675,7 @@ export class LobbyManager {
     if (!g || g.kind !== 'auction') return null;
     const budget = g.budgets.get(userId) ?? 0;
     const xi = g.xis.get(userId);
+    const draftDone = g.slotIndex >= g.slots.length;
     return {
       slotIndex: g.slotIndex,
       slots: g.slots,
@@ -684,6 +686,13 @@ export class LobbyManager {
       xi,
       result: g.result,
       winner: g.winner,
+      overview: draftDone
+        ? [...l.players.values()].map((p) => ({
+            userId: p.userId,
+            username: p.username,
+            budget: g.budgets.get(p.userId) ?? 0,
+          }))
+        : undefined,
     };
   }
 
@@ -718,14 +727,23 @@ export class LobbyManager {
     this.nextAuctionSlot(l);
   }
 
+  pickAuctionWinnerByHost(userId: number, code: string, winnerUserId: number) {
+    const l = this.require(code);
+    if (l.hostId !== userId) throw new LobbyError('Only the host can pick the winner');
+    const g = l.game;
+    if (!g || g.kind !== 'auction') throw new LobbyError('Game not in progress');
+    if (l.phase !== 'auction_winner') throw new LobbyError('Not choosing a winner right now');
+    if (!l.players.has(winnerUserId)) throw new LobbyError('Unknown player');
+    g.winner = winnerUserId;
+    this.finish(l);
+  }
+
   private declareAuctionWinner(l: Lobby) {
     const g = l.game as AuctionGame;
     if (!g) return;
     this.clearGameTimer(l);
-    g.winner = this.highestBudgetUser(l);
-    l.phase = 'auction_reveal';
-    this.broadcast(l);
-    this.finish(l);
+    l.phase = 'auction_winner';
+    this.startTimer(l, 'winner', AUCTION_WINNER_SECONDS * 1000);
   }
 
   private highestBudgetUser(l: Lobby): number {
@@ -920,6 +938,12 @@ export class LobbyManager {
       this.nextOrFinish(l);
     } else if (l.phase === 'auction_bid' && kind === 'bid') {
       this.revealAuction(l);
+    } else if (l.phase === 'auction_winner' && kind === 'winner') {
+      const g = l.game;
+      if (g && g.kind === 'auction' && g.winner === null) {
+        g.winner = this.highestBudgetUser(l);
+        this.finish(l);
+      }
     }
   }
 
@@ -983,6 +1007,7 @@ export class LobbyManager {
         username: p.username,
         budget: g?.budgets.get(p.userId) ?? 0,
         xi: g?.xis.get(p.userId) ?? null,
+        won: (g?.winner ?? -1) === p.userId,
       }));
       return { kind: 'auction' as const, standings };
     }
@@ -1034,7 +1059,7 @@ export class LobbyManager {
         | { kind: 'ffa'; standings: { userId: number; place: number; score: number }[] }
         | { kind: 'teams'; standings: { teamIdx: number; place: number; members: { userId: number; score: number }[] }[] }
         | { kind: 'guesswho'; standings: { userId: number; lives: number; won: boolean }[] }
-        | { kind: 'auction'; standings: { userId: number; budget: number }[] };
+        | { kind: 'auction'; standings: { userId: number; budget: number; won: boolean }[] };
       if (results.kind === 'ffa') {
         for (const s of results.standings) {
           await client.query(
@@ -1055,7 +1080,7 @@ export class LobbyManager {
         for (const s of results.standings) {
           await client.query(
             `INSERT INTO match_players (match_id, user_id, team, place, score) VALUES ($1, $2, NULL, $3, $4)`,
-            [matchId, s.userId, null, results.kind === 'guesswho' ? (s.won ? 1 : 0) : s.budget, results.kind === 'guesswho' ? s.lives : s.budget],
+            [matchId, s.userId, null, s.won ? 1 : 0, results.kind === 'guesswho' ? s.lives : s.budget],
           );
         }
       }

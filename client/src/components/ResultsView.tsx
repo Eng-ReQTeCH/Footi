@@ -166,9 +166,12 @@ function AuctionResults({ results, meId }: { results: Extract<Results, { kind: '
   return (
     <div className="space-y-4">
       {results.standings.map((s) => (
-        <div key={s.userId} className={cx('glass-card p-4', s.userId === meId && 'border-emerald-500/40')}>
+        <div key={s.userId} className={cx('glass-card p-4', s.userId === meId && 'border-emerald-500/40', s.won && 'border-amber-500/40')}>
           <div className="flex items-center justify-between">
-            <span className="text-sm font-black text-slate-100">{s.username}</span>
+            <span className="text-sm font-black text-slate-100">
+              {s.username}
+              {s.won && <Trophy size={16} className="ml-1.5 inline text-amber-400" />}
+            </span>
             <span className="font-mono text-sm font-black text-emerald-400">{s.budget}M €</span>
           </div>
           {s.xi && <XIView xi={s.xi} />}
@@ -217,7 +220,7 @@ function XIView({ xi }: { xi: { manager: { name: string } | null; gk: { name: st
 
 function llmPrompt(results: Extract<Results, { kind: 'auction' }>): string {
   const byBudget = [...results.standings].sort((a, b) => b.budget - a.budget);
-  const winner = byBudget[0];
+  const winner = results.standings.find((s) => s.won);
   const lines: string[] = [];
   for (const s of byBudget) {
     const xi = s.xi;
@@ -225,7 +228,7 @@ function llmPrompt(results: Extract<Results, { kind: 'auction' }>): string {
     const starters = [xi.gk?.name, ...xi.def.map((p) => p.name), ...xi.mid.map((p) => p.name), ...xi.att.map((p) => p.name)].filter(Boolean) as string[];
     const sub = xi.sub ? `, SUB: ${xi.sub.name}` : '';
     const mgr = xi.manager ? ` (Manager: ${xi.manager.name})` : '';
-    const tag = s.userId === winner?.userId ? ' [WINNER — highest remaining budget]' : '';
+    const tag = s.userId === winner?.userId ? ' [WINNER — host pick]' : '';
     lines.push(`${s.username}: ${starters.join(', ')}${sub}${mgr} — ${s.budget}M € remaining${tag}`);
   }
   const matchIntro =

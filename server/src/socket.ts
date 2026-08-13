@@ -145,5 +145,14 @@ export function setupSockets(io: Server, manager: LobbyManager) {
         cb?.({ ok: false, error: errOf(e) });
       }
     });
+
+    socket.on('lobby:pickWinner', (winnerUserId: number, cb?: Callback) => {
+      try {
+        manager.pickAuctionWinnerByHost(socket.data.userId as number, code()!, Number(winnerUserId));
+        cb?.({ ok: true });
+      } catch (e) {
+        cb?.({ ok: false, error: errOf(e) });
+      }
+    });
   });
 }

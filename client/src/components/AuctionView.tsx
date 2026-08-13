@@ -11,7 +11,7 @@ import { Trophy } from './ui/Icons';
 const QUICK_BIDS = [0, 5, 10, 20, 50];
 
 export default function AuctionView({ state }: { state: LobbyState }) {
-  const { bid, reveal, nextSlot, connected } = useSocket();
+  const { bid, reveal, nextSlot, pickWinner, connected } = useSocket();
   const me = useUser();
   const a = state.auction!;
   const isHost = state.hostId === me.id;
@@ -20,6 +20,7 @@ export default function AuctionView({ state }: { state: LobbyState }) {
   const [busy, setBusy] = useState(false);
   const isBidPhase = state.phase === 'auction_bid';
   const isReveal = state.phase === 'auction_reveal';
+  const isWinnerPick = state.phase === 'auction_winner';
   const myBid = a.bid;
 
   const submitBid = async () => {
@@ -58,10 +59,22 @@ export default function AuctionView({ state }: { state: LobbyState }) {
     }
   };
 
+  const crown = async (userId: number) => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      await pickWinner(userId);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
     <div className="space-y-3 pt-2">
       <AppHeader connected={connected} showMenu={false} />
-      {state.timer?.kind === 'bid' && <TimerBar timer={state.timer} />}
+      {(state.timer?.kind === 'bid' || state.timer?.kind === 'winner') && <TimerBar timer={state.timer} />}
 
       {/* Budget + slot */}
       <div className="glass-card-sm flex items-center justify-between px-4 py-3">
@@ -197,6 +210,34 @@ export default function AuctionView({ state }: { state: LobbyState }) {
           <Trophy size={20} className="mx-auto text-amber-400" />
           <p className="mt-1 text-sm font-black text-white">All slots drafted</p>
           <p className="text-xs text-slate-400">Results are coming up…</p>
+        </div>
+      )}
+
+      {/* Host picks the winner */}
+      {isWinnerPick && (
+        <div className="glass-card p-4">
+          <div className="text-center">
+            <Trophy size={24} className="mx-auto text-amber-400" />
+            <p className="mt-1 text-sm font-black text-white">Draft complete — who built the best squad?</p>
+            <p className="mt-0.5 text-xs text-slate-400">
+              {isHost ? 'Tap a player to crown them the winner' : 'The host is choosing the winner…'}
+            </p>
+          </div>
+          {a.overview && (
+            <div className="mt-3 space-y-1.5">
+              {a.overview.map((o) => (
+                <button
+                  key={o.userId}
+                  disabled={!isHost}
+                  onClick={() => crown(o.userId)}
+                  className="flex w-full items-center justify-between rounded-lg bg-pitch-950/50 px-3 py-2 text-left text-sm transition enabled:hover:bg-pitch-800"
+                >
+                  <span className="truncate font-bold text-slate-200">{o.username}</span>
+                  <span className="font-mono font-black text-emerald-400">{o.budget}M €</span>
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       )}
 

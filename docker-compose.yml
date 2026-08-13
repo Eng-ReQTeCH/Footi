@@ -21,8 +21,8 @@ services:
       DATABASE_URL: postgres://footi:${POSTGRES_PASSWORD:-footi}@db:5432/footi
       SESSION_SECRET: ${SESSION_SECRET:-dev-only-secret-change-me}
       ADMIN_TOKEN: ${ADMIN_TOKEN:-footi-admin}
-      PLAYER_MV_FLOOR: ${PLAYER_MV_FLOOR:-20000000}
-      TOP_CLUB_MV_FLOOR: ${TOP_CLUB_MV_FLOOR:-8000000}
+      PLAYER_MV_FLOOR: ${PLAYER_MV_FLOOR:-30000000}
+      TOP_CLUB_MV_FLOOR: ${TOP_CLUB_MV_FLOOR:-12000000}
       PORT: "3000"
     volumes:
       - ./seed:/seed:ro

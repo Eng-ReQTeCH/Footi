@@ -3,8 +3,8 @@ import { existsSync } from 'node:fs';
 import path from 'node:path';
 
 export const TOP5_COMPETITIONS = ['GB1', 'L1', 'ES1', 'IT1', 'FR1'];
-const HIGH_MV_FLOOR = Number(process.env.PLAYER_MV_FLOOR) || 20_000_000;
-const TOP_CLUB_MV_FLOOR = Number(process.env.TOP_CLUB_MV_FLOOR) || 8_000_000;
+const HIGH_MV_FLOOR = Number(process.env.PLAYER_MV_FLOOR) || 30_000_000;
+const TOP_CLUB_MV_FLOOR = Number(process.env.TOP_CLUB_MV_FLOOR) || 12_000_000;
 const POSITIONS = ['Goalkeeper', 'Defender', 'Midfield', 'Attack'];
 
 const PLAYER_CANDIDATES = ['/app/database/players.csv', '../Database/players.csv', 'Database/players.csv'];

@@ -1,7 +1,7 @@
 export type Mode = 'ffa' | 'teams';
 export type Difficulty = 'easy' | 'medium' | 'hard';
 export type GameType = 'trivia' | 'guesswho' | 'auction';
-export type Phase = 'lobby' | 'starting' | 'playing' | 'judging' | 'review' | 'results' | 'guesswho' | 'auction_bid' | 'auction_reveal';
+export type Phase = 'lobby' | 'starting' | 'playing' | 'judging' | 'review' | 'results' | 'guesswho' | 'auction_bid' | 'auction_reveal' | 'auction_winner';
 export type Stage = 'question' | 'action';
 
 export interface Settings {
@@ -88,6 +88,7 @@ export interface AuctionState {
   xi: AuctionXI;
   result: AuctionResult | null;
   winner: number | null;
+  overview?: { userId: number; username: string; budget: number }[];
 }
 
 export interface PublicPlayer {
@@ -110,7 +111,7 @@ export interface PublicQuestion {
 }
 
 export interface TimerInfo {
-  kind: 'start' | 'question' | 'action' | 'review' | 'bid';
+  kind: 'start' | 'question' | 'action' | 'review' | 'bid' | 'winner';
   endAt: number;
   duration: number;
 }
@@ -125,7 +126,7 @@ export type Results =
   | { kind: 'ffa'; standings: { userId: number; username: string; score: number; place: number }[] }
   | { kind: 'teams'; standings: { teamIdx: number; score: number; place: number; members: { userId: number; username: string; score: number }[] }[] }
   | { kind: 'guesswho'; standings: { userId: number; username: string; lives: number; won: boolean }[]; grid: PoolCard[] }
-  | { kind: 'auction'; standings: { userId: number; username: string; budget: number; xi: AuctionXI }[] };
+  | { kind: 'auction'; standings: { userId: number; username: string; budget: number; xi: AuctionXI; won: boolean }[] };
 
 export interface LobbyState {
   code: string;

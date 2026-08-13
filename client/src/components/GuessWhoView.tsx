@@ -5,25 +5,18 @@ import { useUser } from '../lib/user';
 import { cx } from '../lib/theme';
 import { AppHeader } from './ui/AppHeader';
 import { Button } from './ui/Button';
-import { Check, X } from './ui/Icons';
-
-const LIVES = 3;
+import { TimerBar } from './GameView';
+import { Check, X, Trophy } from './ui/Icons';
 
 export default function GuessWhoView({ state }: { state: LobbyState }) {
-  const { guess, connected } = useSocket();
+  const { endRound, pickGuessWhoWinner, connected } = useSocket();
   const me = useUser();
   const gw = state.guessWho!;
-  const mePlayer = state.players.find((p) => p.userId === me.id);
+  const isHost = state.hostId === me.id;
+  const isWinnerPick = state.phase === 'guesswho_winner';
 
   const [crossed, setCrossed] = useState<Set<number>>(new Set());
-  const [mode, setMode] = useState<'elim' | 'guess'>('elim');
   const [busy, setBusy] = useState(false);
-
-  const myLives = gw.mine.lives;
-  const winner = gw.mine.winner;
-  const gameOver = winner !== null || myLives <= 0;
-  const iWon = winner === me.id;
-  const othersWon = winner !== null && winner !== me.id;
 
   const toggleCross = (id: number) => {
     setCrossed((prev) => {
@@ -34,24 +27,34 @@ export default function GuessWhoView({ state }: { state: LobbyState }) {
     });
   };
 
-  const submitGuess = async (id: number) => {
-    if (busy || gameOver) return;
+  const endRoundNow = async () => {
+    if (busy) return;
     setBusy(true);
     try {
-      await guess(id);
+      await endRound();
     } catch (e) {
       console.error(e);
     } finally {
       setBusy(false);
-      setMode('elim');
     }
   };
 
-  const last = gw.mine.lastGuess;
+  const crown = async (userId: number) => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      await pickGuessWhoWinner(userId);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setBusy(false);
+    }
+  };
 
   return (
     <div className="space-y-3 pt-2">
       <AppHeader connected={connected} showMenu={false} />
+      {state.timer?.kind === 'winner' && <TimerBar timer={state.timer} />}
 
       {/* Secret target */}
       <div className="glass-card p-4">
@@ -73,108 +76,59 @@ export default function GuessWhoView({ state }: { state: LobbyState }) {
           ) : (
             <div className="text-sm text-slate-400">Loading your secret player…</div>
           )}
-          <div className="ml-auto flex items-center gap-1.5">
-            {Array.from({ length: LIVES }, (_, i) => (
-              <span
-                key={i}
-                className={cx(
-                  'grid size-7 place-items-center rounded-full text-xs font-black',
-                  i < myLives ? 'bg-emerald-500/20 text-emerald-400' : 'bg-rose-500/20 text-rose-400',
-                )}
-              >
-                {i < myLives ? '❤' : '✕'}
-              </span>
-            ))}
-          </div>
         </div>
         <p className="mt-3 text-center text-[11px] leading-relaxed text-slate-500">
-          Ask real-life questions. Cross out players that can't be your target — you have <b className="text-slate-300">{LIVES} guesses</b>.
+          Everyone sees the same grid. Yours is <b className="text-purple-300">{gw.secret?.name ?? '…'}</b> — ask real-life
+          questions and figure out each other's player. When the round is over, the host crowns the winner.
         </p>
       </div>
 
-      {/* Guess feedback */}
-      {last && (
-        <div
-          className={cx(
-            'glass-card-sm p-3 text-center',
-            last.correct ? 'border-emerald-500/40' : 'border-rose-500/40',
-          )}
-        >
-          <p className={cx('text-sm font-black', last.correct ? 'text-emerald-400' : 'text-rose-400')}>
-            {last.correct ? 'Correct — you found your player!' : 'Wrong guess!'}
-          </p>
-          <p className="mt-0.5 text-xs text-slate-500">
-            {last.guesser === me.id ? 'You' : state.players.find((p) => p.userId === last.guesser)?.username ?? 'They'} guessed a player · {last.livesLeft} {last.livesLeft === 1 ? 'life' : 'lives'} left
-          </p>
-        </div>
-      )}
-
-      {/* Game over */}
-      {gameOver && (
-        <div className="glass-card p-5 text-center">
-          <p className={cx('text-lg font-black', iWon ? 'text-emerald-400' : othersWon ? 'text-amber-400' : 'text-rose-400')}>
-            {iWon ? 'You found your player! 🎉' : othersWon ? 'The game is over' : 'You ran out of guesses!'}
-          </p>
-          <p className="mt-1 text-xs text-slate-400">
-            {gw.secret ? `Your player was ${gw.secret.name}` : ''}
-          </p>
-          {othersWon && (
-            <p className="mt-2 text-xs text-slate-400">
-              <span className="font-bold text-slate-200">
-                {state.players.find((p) => p.userId === winner)?.username}
-              </span>{' '}
-              found their player first!
+      {/* Host picks the winner */}
+      {isWinnerPick && (
+        <div className="glass-card p-4">
+          <div className="text-center">
+            <Trophy size={24} className="mx-auto text-amber-400" />
+            <p className="mt-1 text-sm font-black text-white">Round over — who won?</p>
+            <p className="mt-0.5 text-xs text-slate-400">
+              {isHost ? 'Tap a player to crown them the winner' : 'The host is choosing the winner…'}
             </p>
+          </div>
+          {isHost && (
+            <div className="mt-3 space-y-1.5">
+              {state.players.map((p) => (
+                <button
+                  key={p.userId}
+                  onClick={() => crown(p.userId)}
+                  className="flex w-full items-center justify-between rounded-lg bg-pitch-950/50 px-3 py-2 text-left text-sm transition enabled:hover:bg-pitch-800"
+                >
+                  <span className="truncate font-bold text-slate-200">{p.username}</span>
+                  {p.userId === gw.declared && <Trophy size={16} className="text-amber-400" />}
+                </button>
+              ))}
+            </div>
           )}
         </div>
-      )}
-
-      {/* Mode toggle */}
-      {!gameOver && (
-        <div className="flex justify-center gap-2">
-          <button
-            onClick={() => setMode('elim')}
-            className={cx(
-              'rounded-lg border px-3 py-1.5 text-xs font-bold',
-              mode === 'elim' ? 'border-slate-400 bg-pitch-800 text-slate-200' : 'border-pitch-bright text-slate-500',
-            )}
-          >
-            Cross out ✕
-          </button>
-          <button
-            onClick={() => setMode('guess')}
-            className={cx(
-              'rounded-lg border px-3 py-1.5 text-xs font-bold',
-              mode === 'guess' ? 'border-emerald-500 bg-emerald-500/15 text-emerald-300' : 'border-pitch-bright text-slate-500',
-            )}
-          >
-            Guess 🎯
-          </button>
-        </div>
-      )}
-
-      {mode === 'guess' && !gameOver && (
-        <p className="text-center text-xs font-bold text-emerald-400">
-          Guess mode — tap a player to submit your guess
-        </p>
       )}
 
       {/* Grid */}
+      <div className="flex items-center justify-between text-xs text-slate-500">
+        <span>{gw.grid.length} players in the grid</span>
+        <span className="flex items-center gap-1">
+          <Check size={12} className="text-emerald-400" /> tap a card to cross it out
+        </span>
+      </div>
       <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 md:grid-cols-6">
         {gw.grid.map((p) => {
           const isCrossed = crossed.has(p.id);
-          const isWrong = gw.mine.wrong.includes(p.id);
           return (
             <button
               key={p.id}
-              disabled={gameOver || busy || myLives <= 0}
-              onClick={() => (mode === 'guess' ? submitGuess(p.id) : toggleCross(p.id))}
+              disabled={isWinnerPick}
+              onClick={() => toggleCross(p.id)}
               className={cx(
                 'relative overflow-hidden rounded-xl border bg-pitch-950/60 text-left transition',
-                mode === 'guess' && !gameOver
-                  ? 'border-emerald-500/50 hover:border-emerald-400'
-                  : 'border-pitch-bright hover:border-slate-500',
-                (isCrossed || isWrong) && 'opacity-50',
+                isWinnerPick ? 'opacity-40' : 'border-pitch-bright hover:border-slate-500',
+                isCrossed && 'opacity-50',
               )}
             >
               <div className="relative aspect-square w-full">
@@ -185,30 +139,28 @@ export default function GuessWhoView({ state }: { state: LobbyState }) {
                   loading="lazy"
                   onError={(e) => ((e.target as HTMLImageElement).style.display = 'none')}
                 />
-                {(isCrossed || isWrong) && (
+                {isCrossed && (
                   <div className="absolute inset-0 grid place-items-center bg-pitch-950/70">
                     <X size={28} className="text-rose-500" />
                   </div>
                 )}
               </div>
-              <div className="truncate px-2 py-1.5 text-[10px] font-bold leading-tight text-slate-300">
-                {p.name}
-              </div>
+              <div className="truncate px-2 py-1.5 text-[10px] font-bold leading-tight text-slate-300">{p.name}</div>
             </button>
           );
         })}
       </div>
 
-      <div className="flex items-center justify-between text-xs text-slate-500">
-        <span>
-          {mePlayer?.username ?? 'You'}: {myLives} {myLives === 1 ? 'life' : 'lives'}
-        </span>
-        <span className="flex items-center gap-1">
-          <Check size={12} className="text-emerald-400" /> not eliminated
-        </span>
-      </div>
-
-      {busy && <Button full disabled className="py-3">Submitting guess…</Button>}
+      {!isWinnerPick &&
+        (isHost ? (
+          <Button full variant="purple" disabled={busy} onClick={endRoundNow} className="py-3">
+            {busy ? '…' : 'End round & pick winner'}
+          </Button>
+        ) : (
+          <p className="py-3 text-center text-xs font-bold text-slate-500">
+            Waiting for <span className="text-slate-300">{state.players.find((p) => p.userId === state.hostId)?.username}</span> to end the round…
+          </p>
+        ))}
     </div>
   );
 }

@@ -27,7 +27,7 @@ export default function Room() {
   if (state.phase === 'lobby') return <LobbyView state={state} />;
   if (state.phase === 'results') return <ResultsView state={state} />;
   if (state.phase === 'judging') return <JudgeView state={state} />;
-  if (state.phase === 'guesswho') return <GuessWhoView state={state} />;
+  if (state.phase === 'guesswho' || state.phase === 'guesswho_winner') return <GuessWhoView state={state} />;
   if (state.phase === 'auction_bid' || state.phase === 'auction_reveal' || state.phase === 'auction_winner') return <AuctionView state={state} />;
   return <GameView state={state} />;
 }

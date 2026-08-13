@@ -110,9 +110,27 @@ export function setupSockets(io: Server, manager: LobbyManager) {
       }
     });
 
-    socket.on('lobby:guess', (playerId: number, cb?: Callback) => {
+    socket.on('lobby:endRound', (cb?: Callback) => {
       try {
-        manager.guess(socket.data.userId as number, code()!, Number(playerId));
+        manager.endGuessWhoRoundByHost(socket.data.userId as number, code()!);
+        cb?.({ ok: true });
+      } catch (e) {
+        cb?.({ ok: false, error: errOf(e) });
+      }
+    });
+
+    socket.on('lobby:pickGuessWhoWinner', (winnerUserId: number, cb?: Callback) => {
+      try {
+        manager.pickGuessWhoWinnerByHost(socket.data.userId as number, code()!, Number(winnerUserId));
+        cb?.({ ok: true });
+      } catch (e) {
+        cb?.({ ok: false, error: errOf(e) });
+      }
+    });
+
+    socket.on('lobby:rematch', (cb?: Callback) => {
+      try {
+        manager.rematch(socket.data.userId as number, code()!);
         cb?.({ ok: true });
       } catch (e) {
         cb?.({ ok: false, error: errOf(e) });

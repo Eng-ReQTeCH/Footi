@@ -11,7 +11,6 @@ const LOBBY_TTL_FINISHED_MS = 10 * 60_000;
 const AUCTION_BUDGET = 300;
 const AUCTION_BID_SECONDS = 60;
 const AUCTION_WINNER_SECONDS = 120;
-const GUESS_LIVES = 3;
 const GUESS_GRID_SIZE = 24;
 
 export type GameType = 'trivia' | 'guesswho' | 'auction';
@@ -65,10 +64,7 @@ interface GuessWhoGame {
   kind: 'guesswho';
   grid: PoolPlayer[];
   secrets: Map<number, number>;
-  lives: Map<number, number>;
-  wrongGuesses: Map<number, number[]>;
-  lastGuess: { guesser: number; playerId: number; correct: boolean; livesLeft: number } | null;
-  winner: number | null;
+  declared: number | null;
 }
 
 interface AuctionGame {
@@ -106,7 +102,7 @@ interface Player {
   answerPayload: unknown;
 }
 
-type Phase = 'lobby' | 'starting' | 'playing' | 'judging' | 'review' | 'results' | 'guesswho' | 'auction_bid' | 'auction_reveal' | 'auction_winner';
+type Phase = 'lobby' | 'starting' | 'playing' | 'judging' | 'review' | 'results' | 'guesswho' | 'guesswho_winner' | 'auction_bid' | 'auction_reveal' | 'auction_winner';
 type Stage = 'question' | 'action';
 
 interface Timer {
@@ -432,7 +428,7 @@ export class LobbyManager {
   }
 
   private startGuessWho(l: Lobby) {
-    const pool = this.playerData.players;
+    const pool = this.playerData.guessWhoPlayers;
     const grid = pickUniquePlayers(pool, GUESS_GRID_SIZE);
     if (grid.length === 0) throw new LobbyError('No players available for Guess Who');
     const targets = shuffle(grid);
@@ -440,20 +436,11 @@ export class LobbyManager {
     [...l.players.values()].forEach((p, i) => {
       secrets.set(p.userId, targets[i % targets.length].id);
     });
-    const lives = new Map<number, number>();
-    const wrongGuesses = new Map<number, number[]>();
-    for (const p of l.players.values()) {
-      lives.set(p.userId, GUESS_LIVES);
-      wrongGuesses.set(p.userId, []);
-    }
     l.game = {
       kind: 'guesswho',
       grid,
       secrets,
-      lives,
-      wrongGuesses,
-      lastGuess: null,
-      winner: null,
+      declared: null,
     };
     l.phase = 'guesswho';
     this.broadcast(l);
@@ -541,49 +528,58 @@ export class LobbyManager {
     return { id: p.id, name: p.name, imageUrl: p.imageUrl, position: p.position };
   }
 
-  getGuessWhoMine(lobby: Lobby, userId: number) {
-    const g = lobby.game;
-    if (!g || g.kind !== 'guesswho') return null;
-    return {
-      lives: g.lives.get(userId) ?? 0,
-      wrong: g.wrongGuesses.get(userId) ?? [],
-      lastGuess: g.lastGuess,
-      winner: g.winner,
-    };
-  }
-
-  guess(userId: number, code: string, playerId: number) {
+  endGuessWhoRoundByHost(userId: number, code: string) {
     const l = this.require(code);
+    if (l.hostId !== userId) throw new LobbyError('Only the host can end the round');
     const g = l.game;
     if (!g || g.kind !== 'guesswho') throw new LobbyError('Game not in progress');
     if (l.phase !== 'guesswho') throw new LobbyError('Guess Who is not active');
-    if (g.winner !== null) throw new LobbyError('The game is already over');
+    if (g.declared !== null) throw new LobbyError('The round is already over');
+    this.clearGameTimer(l);
+    l.phase = 'guesswho_winner';
+    this.startTimer(l, 'winner', AUCTION_WINNER_SECONDS * 1000);
+  }
+
+  pickGuessWhoWinnerByHost(userId: number, code: string, winnerUserId: number) {
+    const l = this.require(code);
+    if (l.hostId !== userId) throw new LobbyError('Only the host can pick the winner');
+    const g = l.game;
+    if (!g || g.kind !== 'guesswho') throw new LobbyError('Game not in progress');
+    if (l.phase !== 'guesswho_winner') throw new LobbyError('Not choosing a winner right now');
+    if (!l.players.has(winnerUserId)) throw new LobbyError('Unknown player');
+    g.declared = winnerUserId;
+    this.finish(l);
+  }
+
+  rematch(userId: number, code: string) {
+    const l = this.require(code);
+    if (l.phase !== 'results') throw new LobbyError('No finished game to restart');
     if (!l.players.has(userId)) throw new LobbyError('You are not in this lobby');
-    if ((g.lives.get(userId) ?? 0) <= 0) throw new LobbyError('You have no guesses left');
-    const targetId = g.secrets.get(userId);
-    const correct = targetId !== undefined && targetId === playerId;
-    if (!correct) {
-      g.lives.set(userId, (g.lives.get(userId) ?? 0) - 1);
-      g.wrongGuesses.get(userId)!.push(playerId);
+    this.clearGameTimer(l);
+    if (l.judgeHandle) clearTimeout(l.judgeHandle);
+    l.phase = 'lobby';
+    l.stage = null;
+    l.questions = [];
+    l.currentIndex = -1;
+    l.timer = null;
+    l.judgeHandle = null;
+    l.answersLog = [];
+    l.resultsPayload = null;
+    l.matchId = null;
+    l.game = null;
+    l.finishedAt = null;
+    for (const p of l.players.values()) {
+      p.score = 0;
+      p.doneQuestion = false;
+      p.doneAction = false;
+      p.bid = null;
+      p.named = null;
+      p.answerPayload = null;
+      p.team = null;
+      p.manualTeam = null;
     }
-    const livesLeft = g.lives.get(userId) ?? 0;
-    g.lastGuess = { guesser: userId, playerId, correct, livesLeft };
-    if (correct) g.winner = userId;
-    else if (livesLeft <= 0) {
-      let best = -1;
-      let bestLives = -1;
-      for (const [uid, lives] of g.lives) {
-        if (uid === userId) continue;
-        if (lives > bestLives) {
-          best = uid;
-          bestLives = lives;
-        }
-      }
-      g.winner = best;
-    }
+    if (l.settings.mode === 'teams') this.assignTeamsIdle(l);
     this.broadcast(l);
-    if (g.winner !== null) this.finish(l);
-    else if (livesLeft <= 0) this.finish(l);
   }
 
   bid(userId: number, code: string, amount: number) {
@@ -944,6 +940,12 @@ export class LobbyManager {
         g.winner = this.highestBudgetUser(l);
         this.finish(l);
       }
+    } else if (l.phase === 'guesswho_winner' && kind === 'winner') {
+      const g = l.game;
+      if (g && g.kind === 'guesswho' && g.declared === null) {
+        g.declared = l.hostId;
+        this.finish(l);
+      }
     }
   }
 
@@ -985,17 +987,11 @@ export class LobbyManager {
     const players = [...l.players.values()];
     if (l.settings.gameType === 'guesswho') {
       const g = l.game as GuessWhoGame | null;
-      const sorted = [...players].sort((a, b) => {
-        const al = g?.lives.get(a.userId) ?? 0;
-        const bl = g?.lives.get(b.userId) ?? 0;
-        return bl - al;
-      });
-      const winnerId = g?.winner;
-      const standings = sorted.map((p) => ({
+      const declared = g?.declared;
+      const standings = players.map((p) => ({
         userId: p.userId,
         username: p.username,
-        lives: g?.lives.get(p.userId) ?? 0,
-        won: p.userId === winnerId,
+        won: p.userId === declared,
       }));
       return { kind: 'guesswho' as const, standings, grid: g?.grid ?? [] };
     }
@@ -1058,7 +1054,7 @@ export class LobbyManager {
       const results = l.resultsPayload as
         | { kind: 'ffa'; standings: { userId: number; place: number; score: number }[] }
         | { kind: 'teams'; standings: { teamIdx: number; place: number; members: { userId: number; score: number }[] }[] }
-        | { kind: 'guesswho'; standings: { userId: number; lives: number; won: boolean }[] }
+        | { kind: 'guesswho'; standings: { userId: number; won: boolean }[] }
         | { kind: 'auction'; standings: { userId: number; budget: number; won: boolean }[] };
       if (results.kind === 'ffa') {
         for (const s of results.standings) {
@@ -1080,7 +1076,7 @@ export class LobbyManager {
         for (const s of results.standings) {
           await client.query(
             `INSERT INTO match_players (match_id, user_id, team, place, score) VALUES ($1, $2, NULL, $3, $4)`,
-            [matchId, s.userId, null, s.won ? 1 : 0, results.kind === 'guesswho' ? s.lives : s.budget],
+            [matchId, s.userId, null, s.won ? 1 : 0, results.kind === 'guesswho' ? 0 : s.budget],
           );
         }
       }
@@ -1178,7 +1174,7 @@ export class LobbyManager {
         guessWho: {
           grid: this.getGuessWhoGrid(l),
           secret,
-          mine: this.getGuessWhoMine(l, forUserId),
+          declared: g.declared,
         },
       };
     }

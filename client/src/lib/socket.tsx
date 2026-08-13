@@ -16,11 +16,13 @@ interface SocketCtx {
   start: () => Promise<void>;
   answer: (stage: string, payload: unknown) => Promise<void>;
   submitJudgments: (judgments: { userId: number; points: number }[]) => Promise<void>;
-  guess: (playerId: number) => Promise<void>;
+  endRound: () => Promise<void>;
+  pickGuessWhoWinner: (userId: number) => Promise<void>;
   bid: (amount: number) => Promise<void>;
   reveal: () => Promise<void>;
   nextSlot: () => Promise<void>;
   pickWinner: (userId: number) => Promise<void>;
+  rematch: () => Promise<void>;
   clearToast: () => void;
 }
 
@@ -80,7 +82,11 @@ export function SocketProvider({ children }: { children: ReactNode }) {
     joinLobby: async (code) => {
       await emit('lobby:join', code);
     },
-    leaveLobby: () => socketRef.current?.emit('lobby:leave'),
+    leaveLobby: () => {
+      socketRef.current?.emit('lobby:leave');
+      setState(null);
+      setJudge(null);
+    },
     updateSettings: async (settings) => {
       await emit('lobby:settings', settings);
     },
@@ -99,8 +105,11 @@ export function SocketProvider({ children }: { children: ReactNode }) {
     submitJudgments: async (judgments) => {
       await emit('lobby:judge', judgments);
     },
-    guess: async (playerId) => {
-      await emit('lobby:guess', playerId);
+    endRound: async () => {
+      await emit('lobby:endRound');
+    },
+    pickGuessWhoWinner: async (userId) => {
+      await emit('lobby:pickGuessWhoWinner', userId);
     },
     bid: async (amount) => {
       await emit('lobby:bid', amount);
@@ -113,6 +122,9 @@ export function SocketProvider({ children }: { children: ReactNode }) {
     },
     pickWinner: async (userId) => {
       await emit('lobby:pickWinner', userId);
+    },
+    rematch: async () => {
+      await emit('lobby:rematch');
     },
   };
 

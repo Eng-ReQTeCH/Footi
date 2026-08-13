@@ -71,15 +71,20 @@ async function downloadOne(id: number, url: string): Promise<void> {
 export function setupImageCache(data: PlayerData): void {
   ensureDir();
   const jobs: { id: number; url: string }[] = [];
-  for (const p of data.players) {
-    const remote = p.imageUrl;
-    remoteByPlayerId.set(p.id, remote);
-    p.imageUrl = `/images/${p.id}`;
-    if (fileByPlayerId.has(p.id)) continue;
-    jobs.push({ id: p.id, url: remote });
+  const seen = new Set<number>();
+  for (const list of [data.players, data.guessWhoPlayers]) {
+    for (const p of list) {
+      if (seen.has(p.id)) continue;
+      seen.add(p.id);
+      const remote = p.imageUrl;
+      remoteByPlayerId.set(p.id, remote);
+      p.imageUrl = `/images/${p.id}`;
+      if (fileByPlayerId.has(p.id)) continue;
+      jobs.push({ id: p.id, url: remote });
+    }
   }
   if (jobs.length === 0) {
-    console.log(`[images] all ${data.players.length} player images already cached locally`);
+    console.log(`[images] all ${seen.size} player images already cached locally`);
     return;
   }
   console.log(`[images] caching ${jobs.length} player images → ${IMAGE_DIR}`);

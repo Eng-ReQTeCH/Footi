@@ -14,7 +14,7 @@ async function main() {
   await runMigrations();
   const playerData = await loadPlayerData();
   setupImageCache(playerData);
-  console.log(`player pool ready: ${playerData.players.length} players, ${playerData.managers.length} managers`);
+  console.log(`player pool ready: ${playerData.players.length} players (${playerData.guessWhoPlayers.length} for Guess Who), ${playerData.managers.length} managers`);
   const app = express();
   const http = createServer(app);
   const io = new Server(http, { path: '/socket.io' });

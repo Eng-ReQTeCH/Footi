@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import type { LobbyState, Settings, GameType } from '../lib/types';
 import { useSocket } from '../lib/socket';
 import { useUser } from '../lib/user';
+import { useNavigate } from 'react-router-dom';
 import { teamColor, cx } from '../lib/theme';
 import { AppHeader } from './ui/AppHeader';
 import { Avatar } from './ui/Avatar';
@@ -21,6 +22,7 @@ const GAME_TYPES: { value: GameType; label: string; note: string }[] = [
 export default function LobbyView({ state }: { state: LobbyState }) {
   const { updateSettings, start, kick, setTeam, leaveLobby, connected } = useSocket();
   const me = useUser();
+  const navigate = useNavigate();
   const [settings, setSettings] = useState<Settings>(state.settings);
   const [categories, setCategories] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
@@ -364,7 +366,15 @@ export default function LobbyView({ state }: { state: LobbyState }) {
             Waiting for <span className="font-bold text-slate-300">{hostName(state)}</span> to start…
           </p>
         )}
-        <Button variant="ghost" full onClick={leaveLobby} className="text-rose-400">
+        <Button
+          variant="ghost"
+          full
+          onClick={() => {
+            leaveLobby();
+            navigate('/');
+          }}
+          className="text-rose-400"
+        >
           Leave lobby
         </Button>
       </div>

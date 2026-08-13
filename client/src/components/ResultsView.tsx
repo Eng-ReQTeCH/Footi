@@ -9,7 +9,7 @@ import { Button } from './ui/Button';
 import { Trophy } from './ui/Icons';
 
 export default function ResultsView({ state }: { state: LobbyState }) {
-  const { createLobby, leaveLobby } = useSocket();
+  const { rematch, leaveLobby } = useSocket();
   const me = useUser();
   const navigate = useNavigate();
   const [busy, setBusy] = useState(false);
@@ -18,8 +18,7 @@ export default function ResultsView({ state }: { state: LobbyState }) {
   const playAgain = async () => {
     setBusy(true);
     try {
-      await createLobby(state.settings);
-      navigate('/room');
+      await rematch();
     } catch (e) {
       console.error(e);
       setBusy(false);
@@ -133,7 +132,7 @@ function GuessWhoResults({ results }: { results: Extract<Results, { kind: 'guess
     <div className="space-y-3">
       <div className="glass-card-sm p-4 text-center">
         <p className={cx('text-lg font-black', winner?.userId === me.id ? 'text-emerald-400' : 'text-amber-400')}>
-          {winner ? `${winner.username} found their player! 🎉` : "It's a draw — the grid was exhausted"}
+          {winner ? `${winner.username} won the round! 🎉` : 'No winner was chosen'}
         </p>
       </div>
       <div className="space-y-2">
@@ -141,9 +140,9 @@ function GuessWhoResults({ results }: { results: Extract<Results, { kind: 'guess
           <div key={s.userId} className={cx('glass-card-sm flex items-center gap-3 p-3', s.userId === me.id && 'border-emerald-500/40')}>
             <Avatar name={s.username} size="sm" />
             <span className="min-w-0 flex-1 truncate text-sm font-bold text-slate-100">{s.username}</span>
-            <span className={cx('rounded-full px-2 py-0.5 text-xs font-black', s.won ? 'bg-emerald-500/20 text-emerald-300' : 'bg-pitch-950 text-slate-400')}>
-              {s.won ? 'WINNER' : `${s.lives} lives`}
-            </span>
+            {s.won && (
+              <span className="rounded-full bg-emerald-500/20 px-2 py-0.5 text-xs font-black text-emerald-300">WINNER</span>
+            )}
           </div>
         ))}
       </div>

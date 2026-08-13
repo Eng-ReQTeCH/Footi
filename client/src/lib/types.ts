@@ -1,7 +1,7 @@
 export type Mode = 'ffa' | 'teams';
 export type Difficulty = 'easy' | 'medium' | 'hard';
 export type GameType = 'trivia' | 'guesswho' | 'auction';
-export type Phase = 'lobby' | 'starting' | 'playing' | 'judging' | 'review' | 'results' | 'guesswho' | 'auction_bid' | 'auction_reveal' | 'auction_winner';
+export type Phase = 'lobby' | 'starting' | 'playing' | 'judging' | 'review' | 'results' | 'guesswho' | 'guesswho_winner' | 'auction_bid' | 'auction_reveal' | 'auction_winner';
 export type Stage = 'question' | 'action';
 
 export interface Settings {
@@ -22,17 +22,10 @@ export interface PoolCard {
   position: string;
 }
 
-export interface GuessWhoMine {
-  lives: number;
-  wrong: number[];
-  lastGuess: { guesser: number; playerId: number; correct: boolean; livesLeft: number } | null;
-  winner: number | null;
-}
-
 export interface GuessWhoState {
   grid: PoolCard[];
   secret: PoolCard | null;
-  mine: GuessWhoMine;
+  declared: number | null;
 }
 
 export interface AuctionPlayer {
@@ -125,7 +118,7 @@ export interface AnswerResult {
 export type Results =
   | { kind: 'ffa'; standings: { userId: number; username: string; score: number; place: number }[] }
   | { kind: 'teams'; standings: { teamIdx: number; score: number; place: number; members: { userId: number; username: string; score: number }[] }[] }
-  | { kind: 'guesswho'; standings: { userId: number; username: string; lives: number; won: boolean }[]; grid: PoolCard[] }
+  | { kind: 'guesswho'; standings: { userId: number; username: string; won: boolean }[]; grid: PoolCard[] }
   | { kind: 'auction'; standings: { userId: number; username: string; budget: number; xi: AuctionXI; won: boolean }[] };
 
 export interface LobbyState {

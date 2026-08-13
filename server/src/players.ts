@@ -213,7 +213,7 @@ function loadFc26(rows: string[][], idx: Map<string, number>): Fc26Index {
     if (shortName) addFc26(short, shortName, overall, id);
     if (club) addFc26(lastClub, `${lastWord}|${club}`, overall, id);
   }
-  return { long, short, last, lastClub, ids, topClubs };
+  return { long, short, lastClub, ids, topClubs };
 }
 
 function fcMatch(row: string[], idx: Map<string, number>, fc26: Fc26Index): { overall: number; id: string } | null {

@@ -3,12 +3,15 @@ import { existsSync } from 'node:fs';
 import path from 'node:path';
 
 export const TOP5_COMPETITIONS = ['GB1', 'L1', 'ES1', 'IT1', 'FR1'];
-const HIGH_MV_FLOOR = Number(process.env.PLAYER_MV_FLOOR) || 30_000_000;
-const TOP_CLUB_MV_FLOOR = Number(process.env.TOP_CLUB_MV_FLOOR) || 12_000_000;
+const HIGH_MV_FLOOR = Number(process.env.PLAYER_MV_FLOOR) || 40_000_000;
+const GK_MV_FLOOR = Number(process.env.PLAYER_GK_MV_FLOOR) || 15_000_000;
+const TOP_CLUB_MV_FLOOR = Number(process.env.TOP_CLUB_MV_FLOOR) || 18_000_000;
+const FC_RATING_FLOOR = Number(process.env.PLAYER_FC_RATING_FLOOR) || 83;
 const POSITIONS = ['Goalkeeper', 'Defender', 'Midfield', 'Attack'];
 
 const PLAYER_CANDIDATES = ['/app/database/players.csv', '../Database/players.csv', 'Database/players.csv'];
 const CLUB_CANDIDATES = ['/app/database/clubs.csv', '../Database/clubs.csv', 'Database/clubs.csv'];
+const FC26_CANDIDATES = ['/app/database/FC26_20250921.csv', '../Database/FC26_20250921.csv', 'Database/FC26_20250921.csv'];
 
 export interface PoolPlayer {
   id: number;
@@ -105,6 +108,101 @@ function isEgyptian(row: string[], idx: Map<string, number>): boolean {
   );
 }
 
+function normalize(s: string): string {
+  return s
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/\p{M}/gu, '')
+    .replace(/[^a-z0-9 ]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+interface Fc26Index {
+  long: Map<string, Map<number, string>>;
+  short: Map<string, Map<number, string>>;
+  last: Map<string, Map<number, string>>;
+  lastClub: Map<string, Map<number, string>>;
+}
+
+function addFc26(m: Map<string, Map<number, string>>, key: string, overall: number, id: string): void {
+  let entry = m.get(key);
+  if (!entry) {
+    entry = new Map();
+    m.set(key, entry);
+  }
+  if (!entry.has(overall)) entry.set(overall, id);
+}
+
+function bestOverall(m: Map<number, string> | undefined): number {
+  if (!m || m.size === 0) return 0;
+  let best = 0;
+  for (const k of m.keys()) if (k > best) best = k;
+  return best;
+}
+
+function loadFc26(rows: string[][], idx: Map<string, number>): Fc26Index {
+  const long = new Map<string, Map<number, string>>();
+  const short = new Map<string, Map<number, string>>();
+  const last = new Map<string, Map<number, string>>();
+  const lastClub = new Map<string, Map<number, string>>();
+  for (let i = 1; i < rows.length; i++) {
+    const row = rows[i];
+    if (row.length === 1 && row[0].trim() === '') continue;
+    const longName = normalize(field(row, idx, 'long_name'));
+    const shortName = normalize(field(row, idx, 'short_name'));
+    if (!longName && !shortName) continue;
+    const overall = num(field(row, idx, 'overall'));
+    if (overall <= 0) continue;
+    const id = field(row, idx, 'player_id');
+    const club = normalize(field(row, idx, 'club_name'));
+    const words = longName.split(' ');
+    const lastWord = words[words.length - 1];
+    if (!lastWord) continue;
+    addFc26(long, longName, overall, id);
+    if (shortName) addFc26(short, shortName, overall, id);
+    addFc26(last, lastWord, overall, id);
+    if (club) addFc26(lastClub, `${lastWord}|${club}`, overall, id);
+  }
+  return { long, short, last, lastClub };
+}
+
+function fcRating(row: string[], idx: Map<string, number>, fc26: Fc26Index): number {
+  const full = normalize(field(row, idx, 'name'));
+  const first = normalize(field(row, idx, 'first_name'));
+  const last = normalize(field(row, idx, 'last_name'));
+  const club = normalize(field(row, idx, 'current_club_name'));
+
+  let r = bestOverall(fc26.long.get(full));
+  if (r > 0) return r;
+  if (first && last) {
+    r = bestOverall(fc26.long.get(`${first} ${last}`));
+    if (r > 0) return r;
+    r = bestOverall(fc26.long.get(`${last} ${first}`));
+    if (r > 0) return r;
+    const al = `${first[0]} ${last}`;
+    r = bestOverall(fc26.long.get(al));
+    if (r > 0) return r;
+    r = bestOverall(fc26.short.get(al));
+    if (r > 0) return r;
+  }
+  if (last) {
+    if (first) {
+      r = bestOverall(fc26.short.get(`${first[0]} ${last}`));
+      if (r > 0) return r;
+    }
+    r = bestOverall(fc26.short.get(full));
+    if (r > 0) return r;
+    if (club) {
+      r = bestOverall(fc26.lastClub.get(`${last}|${club}`));
+      if (r > 0) return r;
+    }
+    r = bestOverall(fc26.last.get(last));
+    if (r > 0) return r;
+  }
+  return 0;
+}
+
 const FALLBACK_MANAGERS: { name: string; clubName: string }[] = [
   { name: 'Pep Guardiola', clubName: 'Manchester City' },
   { name: 'Jürgen Klopp', clubName: 'Liverpool' },
@@ -144,6 +242,18 @@ export async function loadPlayerData(): Promise<PlayerData> {
   const pIdx = indexHeaders(pRows[0]);
   const cIdx = indexHeaders(cRows[0]);
 
+  let fc26: Fc26Index = { long: new Map(), short: new Map(), last: new Map(), lastClub: new Map() };
+  let fc26Path: string | undefined;
+  try {
+    fc26Path = firstExisting(FC26_CANDIDATES);
+  } catch {
+    // FC26 ratings are optional; the rating floor simply won't apply without the file.
+  }
+  if (fc26Path) {
+    const fRows = parseCsv(await readFile(fc26Path, 'utf8'));
+    fc26 = loadFc26(fRows, indexHeaders(fRows[0]));
+  }
+
   const clubScores = new Map<string, number>();
   for (let i = 1; i < pRows.length; i++) {
     const row = pRows[i];
@@ -180,7 +290,10 @@ export async function loadPlayerData(): Promise<PlayerData> {
     const comp = field(row, pIdx, 'current_club_domestic_competition_id');
     const cid = field(row, pIdx, 'current_club_id');
     const inTopClub = topClubKeys.has(`${comp}:${cid}`);
-    if (!(highestMV >= HIGH_MV_FLOOR || (inTopClub && highestMV >= TOP_CLUB_MV_FLOOR) || isEgyptian(row, pIdx))) continue;
+    const mvFloor = position === 'Goalkeeper' ? GK_MV_FLOOR : HIGH_MV_FLOOR;
+    const passesMv = highestMV >= mvFloor || (inTopClub && highestMV >= TOP_CLUB_MV_FLOOR);
+    const passesRating = fcRating(row, pIdx, fc26) >= FC_RATING_FLOOR;
+    if (!(passesMv || passesRating || isEgyptian(row, pIdx))) continue;
     const first = field(row, pIdx, 'first_name');
     const last = field(row, pIdx, 'last_name');
     const name = (field(row, pIdx, 'name') || `${first} ${last}`).trim();

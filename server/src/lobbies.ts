@@ -433,11 +433,12 @@ export class LobbyManager {
   private startGuessWho(l: Lobby) {
     const pool = this.playerData.players;
     const grid = pickUniquePlayers(pool, GUESS_GRID_SIZE);
+    if (grid.length === 0) throw new LobbyError('No players available for Guess Who');
+    const targets = shuffle(grid);
     const secrets = new Map<number, number>();
-    for (const p of l.players.values()) {
-      const target = pickSecretTarget(pool, secrets);
-      secrets.set(p.userId, target.id);
-    }
+    [...l.players.values()].forEach((p, i) => {
+      secrets.set(p.userId, targets[i % targets.length].id);
+    });
     const lives = new Map<number, number>();
     const wrongGuesses = new Map<number, number[]>();
     for (const p of l.players.values()) {
@@ -612,11 +613,11 @@ export class LobbyManager {
       g.budgets.set(winner, (g.budgets.get(winner) ?? 0) - g.bids.get(winner)!);
     }
     const losers: { userId: number; replacement: PoolPlayer | Manager }[] = [];
+    const slot = g.slots[g.slotIndex];
     if (g.offered.kind === 'player') {
-      const slot = g.slots[g.slotIndex];
       for (const uid of l.players.keys()) {
         if (uid === winner) continue;
-        const r = this.randomReplacement(slot.position, g, g.offered.kind === 'player' ? g.offered.player : null);
+        const r = this.randomReplacement(slot.position, g, g.offered.player);
         losers.push({ userId: uid, replacement: r });
         this.assignToXI(g, uid, r, slot);
       }
@@ -1200,17 +1201,4 @@ function pickUniquePlayers(pool: PoolPlayer[], count: number): PoolPlayer[] {
     picked.push(p);
   }
   return picked;
-}
-
-function pickSecretTarget(pool: PoolPlayer[], existing: Map<number, number>): PoolPlayer {
-  const used = new Set(existing.values());
-  let guard = 0;
-  while (guard < 5000) {
-    guard++;
-    const p = pool[randomInt(pool.length)];
-    if (!p || used.has(p.id)) continue;
-    used.add(p.id);
-    return p;
-  }
-  return pool[0];
 }

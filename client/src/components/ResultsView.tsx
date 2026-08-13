@@ -152,6 +152,17 @@ function GuessWhoResults({ results }: { results: Extract<Results, { kind: 'guess
 }
 
 function AuctionResults({ results, meId }: { results: Extract<Results, { kind: 'auction' }>; meId: number }) {
+  const [copied, setCopied] = useState(false);
+  const prompt = llmPrompt(results);
+  const copyPrompt = async () => {
+    try {
+      await navigator.clipboard.writeText(prompt);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch (e) {
+      console.error(e);
+    }
+  };
   return (
     <div className="space-y-4">
       {results.standings.map((s) => (
@@ -164,9 +175,20 @@ function AuctionResults({ results, meId }: { results: Extract<Results, { kind: '
         </div>
       ))}
       <div className="glass-card p-4">
-        <p className="text-sm font-black text-slate-100">Send to the LLM</p>
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-sm font-black text-slate-100">LLM match summary prompt</p>
+          <button
+            onClick={copyPrompt}
+            className={cx(
+              'rounded-lg px-3 py-1.5 text-xs font-black transition',
+              copied ? 'bg-emerald-500/20 text-emerald-300' : 'bg-pitch-800 text-slate-300 hover:text-white',
+            )}
+          >
+            {copied ? 'Copied ✓' : 'Copy'}
+          </button>
+        </div>
         <p className="mt-2 whitespace-pre-wrap rounded-xl bg-pitch-950/60 p-3 font-mono text-[11px] leading-relaxed text-slate-400">
-          {llmPrompt(results)}
+          {prompt}
         </p>
       </div>
     </div>
@@ -194,20 +216,28 @@ function XIView({ xi }: { xi: { manager: { name: string } | null; gk: { name: st
 }
 
 function llmPrompt(results: Extract<Results, { kind: 'auction' }>): string {
+  const byBudget = [...results.standings].sort((a, b) => b.budget - a.budget);
+  const winner = byBudget[0];
   const lines: string[] = [];
-  for (const s of [...results.standings].sort((a, b) => b.budget - a.budget)) {
+  for (const s of byBudget) {
     const xi = s.xi;
     if (!xi) continue;
     const starters = [xi.gk?.name, ...xi.def.map((p) => p.name), ...xi.mid.map((p) => p.name), ...xi.att.map((p) => p.name)].filter(Boolean) as string[];
-    const name = s.username;
-    const mgr = xi.manager ? `, manager ${xi.manager.name}` : '';
-    const sub = xi.sub ? ` [sub] ${xi.sub.name}` : '';
-    lines.push(`${name}: ${starters.join(', ')}${sub}${mgr} — ${s.budget}M left`);
+    const sub = xi.sub ? `, SUB: ${xi.sub.name}` : '';
+    const mgr = xi.manager ? ` (Manager: ${xi.manager.name})` : '';
+    const tag = s.userId === winner?.userId ? ' [WINNER — highest remaining budget]' : '';
+    lines.push(`${s.username}: ${starters.join(', ')}${sub}${mgr} — ${s.budget}M € remaining${tag}`);
   }
+  const matchIntro =
+    byBudget.length === 2
+      ? `Simulate a football match between the following ${byBudget.length} squads.`
+      : `Simulate a mini football tournament between the following ${byBudget.length} squads (round-robin), then focus your summary on the final.`;
   return [
-    'Here are the auction draft squads from our "Auction" mode game.',
-    'Act as a football analyst and rate or rank these squads against each other. You may also answer questions about them.',
+    matchIntro,
+    'Produce the match summary in the style of a SofaScore match page: the final scoreline, a timeline of important events (goals with scorer/assist/minute, yellow and red cards, substitutions), and 2-3 key stats (possession, shots, xG). Make it read like a real, dramatic match report.',
     '',
     ...lines,
+    '',
+    'Respond with the SofaScore-style match summary only.',
   ].join('\n');
 }

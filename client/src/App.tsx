@@ -43,7 +43,7 @@ export default function App() {
     <UserProvider value={me}>
       <div className={`mx-auto min-h-full max-w-lg px-4 ${inRoom ? 'pb-6' : 'pb-6'}`}>
         <Routes>
-          <Route path="/login" element={<Auth onAuthed={setMe} />} />
+          <Route path="/login" element={<Navigate to="/" replace />} />
           <Route path="/" element={<Home me={me} />} />
           <Route path="/room" element={<Room />} />
           <Route path="/friends" element={<Friends />} />

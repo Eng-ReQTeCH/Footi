@@ -5,6 +5,7 @@ import { config } from './config';
 import { requireUser } from './auth';
 import { outcomeFor, type PlayerRow } from './stats';
 import { getType, listTypes, type SeedQuestion } from './questionTypes';
+import { localFileFor, remoteFor } from './imageCache';
 
 function checkAdmin(req: express.Request): boolean {
   const got = Buffer.from(String(req.headers['x-admin-token'] ?? ''));
@@ -45,6 +46,16 @@ async function wlBetween(aId: number, bId: number) {
 }
 
 export function setupRoutes(app: express.Express) {
+  app.get('/images/:id', (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id)) return res.status(404).end();
+    const local = localFileFor(id);
+    if (local) return res.sendFile(local, { maxAge: '7d' });
+    const remote = remoteFor(id);
+    if (remote) return res.redirect(302, remote);
+    res.status(404).end();
+  });
+
   app.get('/api/meta', async (_req, res) => {
     const cats = await pool.query('SELECT DISTINCT category FROM questions ORDER BY category');
     const types = listTypes().map((t) => ({ name: t.name, displayName: t.displayName }));

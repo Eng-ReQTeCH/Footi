@@ -8,10 +8,12 @@ import { setupRoutes } from './routes';
 import { LobbyManager } from './lobbies';
 import { setupSockets } from './socket';
 import { loadPlayerData } from './players';
+import { setupImageCache } from './imageCache';
 
 async function main() {
   await runMigrations();
   const playerData = await loadPlayerData();
+  setupImageCache(playerData);
   console.log(`player pool ready: ${playerData.players.length} players, ${playerData.managers.length} managers`);
   const app = express();
   const http = createServer(app);

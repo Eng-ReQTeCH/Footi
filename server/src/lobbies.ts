@@ -2,13 +2,21 @@ import { randomInt } from 'node:crypto';
 import type { Server, Socket } from 'socket.io';
 import type { Pool } from 'pg';
 import { getType, type QuestionRow } from './questionTypes';
+import type { PlayerData, PoolPlayer, Manager } from './players';
 
 const MAX_PLAYERS = 12;
 const JUDGING_TIMEOUT_MS = 180_000;
 const LOBBY_TTL_EMPTY_MS = 10 * 60_000;
 const LOBBY_TTL_FINISHED_MS = 10 * 60_000;
+const AUCTION_BUDGET = 300;
+const AUCTION_BID_SECONDS = 60;
+const GUESS_LIVES = 3;
+const GUESS_GRID_SIZE = 24;
+
+export type GameType = 'trivia' | 'guesswho' | 'auction';
 
 export interface Settings {
+  gameType: GameType;
   questionCount: number;
   secondsPerQuestion: number;
   pauseSeconds: number;
@@ -19,6 +27,7 @@ export interface Settings {
 }
 
 export const DEFAULT_SETTINGS: Settings = {
+  gameType: 'trivia',
   questionCount: 10,
   secondsPerQuestion: 20,
   pauseSeconds: 4,
@@ -27,6 +36,59 @@ export const DEFAULT_SETTINGS: Settings = {
   mode: 'ffa',
   teamSizes: [],
 };
+
+export interface PoolCard {
+  id: number;
+  name: string;
+  imageUrl: string;
+  position: string;
+}
+
+type Offered = { kind: 'player'; player: PoolPlayer } | { kind: 'manager'; manager: Manager };
+
+interface AuctionSlot {
+  label: string;
+  position: string;
+}
+
+export interface PlayerXI {
+  manager: Manager | null;
+  gk: PoolPlayer | null;
+  def: PoolPlayer[];
+  mid: PoolPlayer[];
+  att: PoolPlayer[];
+  sub: PoolPlayer | null;
+}
+
+interface GuessWhoGame {
+  kind: 'guesswho';
+  grid: PoolPlayer[];
+  secrets: Map<number, number>;
+  lives: Map<number, number>;
+  wrongGuesses: Map<number, number[]>;
+  lastGuess: { guesser: number; playerId: number; correct: boolean; livesLeft: number } | null;
+  winner: number | null;
+}
+
+interface AuctionGame {
+  kind: 'auction';
+  slots: AuctionSlot[];
+  slotIndex: number;
+  budgets: Map<number, number>;
+  bids: Map<number, number>;
+  offered: Offered | null;
+  result: {
+    winner: number;
+    winnerBid: number;
+    losers: { userId: number; replacement: PoolPlayer | Manager }[];
+  } | null;
+  xis: Map<number, PlayerXI>;
+  usedPlayerIds: Set<number>;
+  usedManagerIds: Set<string>;
+  winner: number | null;
+}
+
+type GameState = GuessWhoGame | AuctionGame;
 
 interface Player {
   userId: number;
@@ -43,11 +105,11 @@ interface Player {
   answerPayload: unknown;
 }
 
-type Phase = 'lobby' | 'starting' | 'playing' | 'judging' | 'review' | 'results';
+type Phase = 'lobby' | 'starting' | 'playing' | 'judging' | 'review' | 'results' | 'guesswho' | 'auction_bid' | 'auction_reveal';
 type Stage = 'question' | 'action';
 
 interface Timer {
-  kind: 'start' | 'question' | 'action' | 'review';
+  kind: 'start' | 'question' | 'action' | 'review' | 'bid';
   endAt: number;
   duration: number;
 }
@@ -67,6 +129,7 @@ interface Lobby {
   answersLog: { questionIndex: number; userId: number; payload: unknown; points: number }[];
   resultsPayload: unknown;
   matchId: string | null;
+  game: GameState | null;
   createdAt: number;
   finishedAt: number | null;
 }
@@ -103,7 +166,9 @@ function sanitizeSettings(s: unknown): Settings {
       .filter((n) => Number.isInteger(n) && n >= 1 && n <= 8)
       .slice(0, 8);
   }
+  const gameType = raw.gameType === 'guesswho' || raw.gameType === 'auction' ? raw.gameType : 'trivia';
   return {
+    gameType,
     questionCount: clamp(Number(raw.questionCount) || 10, 1, 30),
     secondsPerQuestion: clamp(Number(raw.secondsPerQuestion) || 20, 10, 120),
     pauseSeconds: clamp(Number(raw.pauseSeconds) || 4, 0, 30),
@@ -120,6 +185,7 @@ export class LobbyManager {
   constructor(
     private io: Server,
     private pool: Pool,
+    private playerData: PlayerData,
   ) {
     setInterval(() => this.sweep(), 60_000);
   }
@@ -171,6 +237,7 @@ export class LobbyManager {
       answersLog: [],
       resultsPayload: null,
       matchId: null,
+      game: null,
       createdAt: Date.now(),
       finishedAt: null,
     };
@@ -344,6 +411,14 @@ export class LobbyManager {
       }
       this.assignTeamsIdle(l);
     }
+    if (l.settings.gameType === 'guesswho') {
+      this.startGuessWho(l);
+      return;
+    }
+    if (l.settings.gameType === 'auction') {
+      this.startAuction(l);
+      return;
+    }
     const questions = await this.pickQuestions(l.settings);
     if (questions.length < l.settings.questionCount) {
       throw new LobbyError(`Only ${questions.length} questions match your filters — add more questions or loosen the filters`);
@@ -353,6 +428,316 @@ export class LobbyManager {
     l.currentIndex = -1;
     this.startTimer(l, 'start', 3_000);
     this.broadcast(l);
+  }
+
+  private startGuessWho(l: Lobby) {
+    const pool = this.playerData.players;
+    const grid = pickUniquePlayers(pool, GUESS_GRID_SIZE);
+    const secrets = new Map<number, number>();
+    for (const p of l.players.values()) {
+      const target = pickSecretTarget(pool, secrets);
+      secrets.set(p.userId, target.id);
+    }
+    const lives = new Map<number, number>();
+    const wrongGuesses = new Map<number, number[]>();
+    for (const p of l.players.values()) {
+      lives.set(p.userId, GUESS_LIVES);
+      wrongGuesses.set(p.userId, []);
+    }
+    l.game = {
+      kind: 'guesswho',
+      grid,
+      secrets,
+      lives,
+      wrongGuesses,
+      lastGuess: null,
+      winner: null,
+    };
+    l.phase = 'guesswho';
+    this.broadcast(l);
+  }
+
+  private startAuction(l: Lobby) {
+    const slots: AuctionSlot[] = [
+      { label: 'Goalkeeper', position: 'Goalkeeper' },
+      { label: 'Defender', position: 'Defender' },
+      { label: 'Defender', position: 'Defender' },
+      { label: 'Defender', position: 'Defender' },
+      { label: 'Defender', position: 'Defender' },
+      { label: 'Midfield', position: 'Midfield' },
+      { label: 'Midfield', position: 'Midfield' },
+      { label: 'Midfield', position: 'Midfield' },
+      { label: 'Attack', position: 'Attack' },
+      { label: 'Attack', position: 'Attack' },
+      { label: 'Attack', position: 'Attack' },
+      { label: 'Super Sub', position: 'Attack' },
+      { label: 'Manager', position: 'Manager' },
+    ];
+    const budgets = new Map<number, number>();
+    const xis = new Map<number, PlayerXI>();
+    for (const p of l.players.values()) {
+      budgets.set(p.userId, AUCTION_BUDGET);
+      xis.set(p.userId, { manager: null, gk: null, def: [], mid: [], att: [], sub: null });
+    }
+    l.game = {
+      kind: 'auction',
+      slots,
+      slotIndex: 0,
+      budgets,
+      bids: new Map(),
+      offered: null,
+      result: null,
+      xis,
+      usedPlayerIds: new Set(),
+      usedManagerIds: new Set(),
+      winner: null,
+    };
+    l.phase = 'auction_bid';
+    this.offerSlot(l);
+  }
+
+  private offerSlot(l: Lobby) {
+    const g = l.game as AuctionGame;
+    if (!g) return;
+    g.bids = new Map();
+    g.result = null;
+    const slot = g.slots[g.slotIndex];
+    g.offered = this.pickOffered(slot, g);
+    this.startTimer(l, 'bid', AUCTION_BID_SECONDS * 1000);
+  }
+
+  private pickOffered(slot: AuctionSlot, g: AuctionGame): Offered {
+    if (slot.position === 'Manager') {
+      const candidates = this.playerData.managers.filter((m) => !g.usedManagerIds.has(m.id));
+      const pool = candidates.length > 0 ? candidates : this.playerData.managers;
+      const manager = pool[randomInt(pool.length)];
+      g.usedManagerIds.add(manager.id);
+      return { kind: 'manager', manager };
+    }
+    const candidates = this.playerData.players.filter(
+      (p) => p.position === slot.position && !g.usedPlayerIds.has(p.id),
+    );
+    const pool = candidates.length > 0 ? candidates : this.playerData.players.filter((p) => p.position === slot.position);
+    const player = pool[randomInt(pool.length)];
+    g.usedPlayerIds.add(player.id);
+    return { kind: 'player', player };
+  }
+
+  getGuessWhoGrid(lobby: Lobby): PoolCard[] {
+    const g = lobby.game;
+    if (!g || g.kind !== 'guesswho') return [];
+    return g.grid.map((p) => ({ id: p.id, name: p.name, imageUrl: p.imageUrl, position: p.position }));
+  }
+
+  getGuessWhoSecret(lobby: Lobby, userId: number): PoolCard | null {
+    const g = lobby.game;
+    if (!g || g.kind !== 'guesswho') return null;
+    const id = g.secrets.get(userId);
+    if (!id) return null;
+    const p = this.playerData.byId.get(id);
+    if (!p) return null;
+    return { id: p.id, name: p.name, imageUrl: p.imageUrl, position: p.position };
+  }
+
+  getGuessWhoMine(lobby: Lobby, userId: number) {
+    const g = lobby.game;
+    if (!g || g.kind !== 'guesswho') return null;
+    return {
+      lives: g.lives.get(userId) ?? 0,
+      wrong: g.wrongGuesses.get(userId) ?? [],
+      lastGuess: g.lastGuess,
+      winner: g.winner,
+    };
+  }
+
+  guess(userId: number, code: string, playerId: number) {
+    const l = this.require(code);
+    const g = l.game;
+    if (!g || g.kind !== 'guesswho') throw new LobbyError('Game not in progress');
+    if (l.phase !== 'guesswho') throw new LobbyError('Guess Who is not active');
+    if (g.winner !== null) throw new LobbyError('The game is already over');
+    if (!l.players.has(userId)) throw new LobbyError('You are not in this lobby');
+    if ((g.lives.get(userId) ?? 0) <= 0) throw new LobbyError('You have no guesses left');
+    const targetId = g.secrets.get(userId);
+    const correct = targetId !== undefined && targetId === playerId;
+    if (!correct) {
+      g.lives.set(userId, (g.lives.get(userId) ?? 0) - 1);
+      g.wrongGuesses.get(userId)!.push(playerId);
+    }
+    const livesLeft = g.lives.get(userId) ?? 0;
+    g.lastGuess = { guesser: userId, playerId, correct, livesLeft };
+    if (correct) g.winner = userId;
+    else if (livesLeft <= 0) {
+      let best = -1;
+      let bestLives = -1;
+      for (const [uid, lives] of g.lives) {
+        if (uid === userId) continue;
+        if (lives > bestLives) {
+          best = uid;
+          bestLives = lives;
+        }
+      }
+      g.winner = best;
+    }
+    this.broadcast(l);
+    if (g.winner !== null) this.finish(l);
+    else if (livesLeft <= 0) this.finish(l);
+  }
+
+  bid(userId: number, code: string, amount: number) {
+    const l = this.require(code);
+    const g = l.game;
+    if (!g || g.kind !== 'auction') throw new LobbyError('Game not in progress');
+    if (l.phase !== 'auction_bid') throw new LobbyError('Not accepting bids right now');
+    if (!l.players.has(userId)) throw new LobbyError('You are not in this lobby');
+    if (!Number.isInteger(amount)) throw new LobbyError('Bid must be a whole number');
+    const budget = g.budgets.get(userId) ?? 0;
+    if (amount < 0) throw new LobbyError('Bid must be at least 0');
+    if (amount > budget) throw new LobbyError(`Your budget is ${budget}M`);
+    g.bids.set(userId, amount);
+    this.broadcast(l);
+  }
+
+  revealAuction(lobby: Lobby) {
+    const l = lobby;
+    const g = l.game;
+    if (!g || g.kind !== 'auction') return;
+    if (l.phase !== 'auction_bid') return;
+    if (g.offered === null) return;
+    this.clearGameTimer(l);
+    l.phase = 'auction_reveal';
+    const bidEntries = [...g.bids.entries()];
+    const winner = bidEntries.reduce<number | null>((best, [uid, bid]) => (best === null || bid > g.bids.get(best)!) ? uid : best, null);
+    if (winner !== null) {
+      g.budgets.set(winner, (g.budgets.get(winner) ?? 0) - g.bids.get(winner)!);
+    }
+    const losers: { userId: number; replacement: PoolPlayer | Manager }[] = [];
+    if (g.offered.kind === 'player') {
+      const slot = g.slots[g.slotIndex];
+      for (const uid of l.players.keys()) {
+        if (uid === winner) continue;
+        const r = this.randomReplacement(slot.position, g, g.offered.kind === 'player' ? g.offered.player : null);
+        losers.push({ userId: uid, replacement: r });
+        this.assignToXI(g, uid, r, slot);
+      }
+      if (winner !== null) this.assignToXI(g, winner, g.offered.player, slot);
+    } else {
+      for (const uid of l.players.keys()) {
+        if (uid === winner) continue;
+        const r = this.randomManager(g);
+        losers.push({ userId: uid, replacement: r });
+        this.assignToXI(g, uid, r, slot);
+      }
+      if (winner !== null) this.assignToXI(g, winner, g.offered.manager, slot);
+    }
+    g.result = {
+      winner: winner ?? -1,
+      winnerBid: winner !== null ? g.bids.get(winner) ?? 0 : 0,
+      losers,
+    };
+    this.broadcast(l);
+  }
+
+  private randomReplacement(position: string, g: AuctionGame, exclude: PoolPlayer | null): PoolPlayer | Manager {
+    const candidates = this.playerData.players.filter(
+      (p) => p.position === position && (exclude === null || p.id !== exclude.id) && !g.usedPlayerIds.has(p.id),
+    );
+    const pool = candidates.length > 0 ? candidates : this.playerData.players.filter((p) => p.position === position);
+    const player = pool[randomInt(pool.length)];
+    g.usedPlayerIds.add(player.id);
+    return player;
+  }
+
+  private randomManager(g: AuctionGame): Manager {
+    const candidates = this.playerData.managers.filter((m) => !g.usedManagerIds.has(m.id));
+    const pool = candidates.length > 0 ? candidates : this.playerData.managers;
+    const manager = pool[randomInt(pool.length)];
+    g.usedManagerIds.add(manager.id);
+    return manager;
+  }
+
+  private assignToXI(g: AuctionGame, userId: number, p: PoolPlayer | Manager, slot: AuctionSlot) {
+    const xi = g.xis.get(userId);
+    if (!xi) return;
+    if (slot.label === 'Goalkeeper') xi.gk = p as PoolPlayer;
+    else if (slot.label === 'Defender') xi.def.push(p as PoolPlayer);
+    else if (slot.label === 'Midfield') xi.mid.push(p as PoolPlayer);
+    else if (slot.label === 'Super Sub') xi.sub = p as PoolPlayer;
+    else if (slot.label === 'Manager') xi.manager = p as Manager;
+    else xi.att.push(p as PoolPlayer);
+  }
+
+  getAuctionView(lobby: Lobby, userId: number) {
+    const l = lobby;
+    const g = l.game;
+    if (!g || g.kind !== 'auction') return null;
+    const budget = g.budgets.get(userId) ?? 0;
+    const xi = g.xis.get(userId);
+    return {
+      slotIndex: g.slotIndex,
+      slots: g.slots,
+      slot: g.slotIndex < g.slots.length ? g.slots[g.slotIndex] : null,
+      offered: g.offered,
+      bid: g.bids.get(userId) ?? null,
+      budget,
+      xi,
+      result: g.result,
+      winner: g.winner,
+    };
+  }
+
+  nextAuctionSlot(lobby: Lobby) {
+    const l = lobby;
+    const g = l.game;
+    if (!g || g.kind !== 'auction') return;
+    if (l.phase !== 'auction_reveal') return;
+    this.clearGameTimer(l);
+    g.slotIndex++;
+    if (g.slotIndex >= g.slots.length) {
+      this.declareAuctionWinner(l);
+      return;
+    }
+    l.phase = 'auction_bid';
+    this.offerSlot(l);
+  }
+
+  public getLobby(code: string) {
+    return this.require(code);
+  }
+
+  revealAuctionByHost(userId: number, code: string) {
+    const l = this.require(code);
+    if (l.hostId !== userId) throw new LobbyError('Only the host can end the bidding round');
+    this.revealAuction(l);
+  }
+
+  nextAuctionSlotByHost(userId: number, code: string) {
+    const l = this.require(code);
+    if (l.hostId !== userId) throw new LobbyError('Only the host can continue to the next round');
+    this.nextAuctionSlot(l);
+  }
+
+  private declareAuctionWinner(l: Lobby) {
+    const g = l.game as AuctionGame;
+    if (!g) return;
+    this.clearGameTimer(l);
+    g.winner = this.highestBudgetUser(l);
+    l.phase = 'auction_reveal';
+    this.broadcast(l);
+    this.finish(l);
+  }
+
+  private highestBudgetUser(l: Lobby): number {
+    const g = l.game as AuctionGame;
+    let best = -1;
+    let bestBudget = -1;
+    for (const [uid, budget] of g.budgets) {
+      if (budget > bestBudget) {
+        best = uid;
+        bestBudget = budget;
+      }
+    }
+    return best;
   }
 
   private async pickQuestions(settings: Settings): Promise<QuestionRow[]> {
@@ -532,6 +917,8 @@ export class LobbyManager {
       this.judgePhase(l);
     } else if (l.phase === 'review' && kind === 'review') {
       this.nextOrFinish(l);
+    } else if (l.phase === 'auction_bid' && kind === 'bid') {
+      this.revealAuction(l);
     }
   }
 
@@ -571,6 +958,33 @@ export class LobbyManager {
 
   private buildResults(l: Lobby) {
     const players = [...l.players.values()];
+    if (l.settings.gameType === 'guesswho') {
+      const g = l.game as GuessWhoGame | null;
+      const sorted = [...players].sort((a, b) => {
+        const al = g?.lives.get(a.userId) ?? 0;
+        const bl = g?.lives.get(b.userId) ?? 0;
+        return bl - al;
+      });
+      const winnerId = g?.winner;
+      const standings = sorted.map((p) => ({
+        userId: p.userId,
+        username: p.username,
+        lives: g?.lives.get(p.userId) ?? 0,
+        won: p.userId === winnerId,
+      }));
+      return { kind: 'guesswho' as const, standings, grid: g?.grid ?? [] };
+    }
+    if (l.settings.gameType === 'auction') {
+      const g = l.game as AuctionGame | null;
+      const sorted = [...players].sort((a, b) => (g?.budgets.get(b.userId) ?? 0) - (g?.budgets.get(a.userId) ?? 0));
+      const standings = sorted.map((p) => ({
+        userId: p.userId,
+        username: p.username,
+        budget: g?.budgets.get(p.userId) ?? 0,
+        xi: g?.xis.get(p.userId) ?? null,
+      }));
+      return { kind: 'auction' as const, standings };
+    }
     if (l.settings.mode === 'ffa') {
       const sorted = [...players].sort((a, b) => b.score - a.score);
       const standings = sorted.map((p, i) => {
@@ -612,12 +1026,14 @@ export class LobbyManager {
       const res = await client.query<{ id: string }>(
         `INSERT INTO matches (lobby_code, mode, host_id, settings, question_ids, finished_at)
          VALUES ($1, $2, $3, $4, $5::int[], now()) RETURNING id`,
-        [l.code, l.settings.mode, l.hostId, JSON.stringify(l.settings), l.questions.map((q) => q.id)],
+        [l.code, l.settings.gameType === 'trivia' ? l.settings.mode : l.settings.gameType, l.hostId, JSON.stringify(l.settings), l.questions.map((q) => q.id)],
       );
       const matchId = res.rows[0].id;
       const results = l.resultsPayload as
         | { kind: 'ffa'; standings: { userId: number; place: number; score: number }[] }
-        | { kind: 'teams'; standings: { teamIdx: number; place: number; members: { userId: number; score: number }[] }[] };
+        | { kind: 'teams'; standings: { teamIdx: number; place: number; members: { userId: number; score: number }[] }[] }
+        | { kind: 'guesswho'; standings: { userId: number; lives: number; won: boolean }[] }
+        | { kind: 'auction'; standings: { userId: number; budget: number }[] };
       if (results.kind === 'ffa') {
         for (const s of results.standings) {
           await client.query(
@@ -625,7 +1041,7 @@ export class LobbyManager {
             [matchId, s.userId, s.place, s.score],
           );
         }
-      } else {
+      } else if (results.kind === 'teams') {
         for (const t of results.standings) {
           for (const m of t.members) {
             await client.query(
@@ -633,6 +1049,13 @@ export class LobbyManager {
               [matchId, m.userId, `Team ${t.teamIdx + 1}`, t.place, m.score],
             );
           }
+        }
+      } else {
+        for (const s of results.standings) {
+          await client.query(
+            `INSERT INTO match_players (match_id, user_id, team, place, score) VALUES ($1, $2, NULL, $3, $4)`,
+            [matchId, s.userId, null, results.kind === 'guesswho' ? (s.won ? 1 : 0) : s.budget, results.kind === 'guesswho' ? s.lives : s.budget],
+          );
         }
       }
       for (const a of l.answersLog) {
@@ -665,11 +1088,14 @@ export class LobbyManager {
   }
 
   broadcast(l: Lobby) {
-    this.io.to(this.room(l.code)).emit('lobby:state', this.snapshot(l));
+    for (const p of l.players.values()) {
+      const snap = this.snapshot(l, p.userId);
+      for (const sid of p.sockets) this.io.to(sid).emit('lobby:state', snap);
+    }
     this.syncJudge(l);
   }
 
-  private snapshot(l: Lobby): Record<string, unknown> {
+  private snapshot(l: Lobby, forUserId: number): Record<string, unknown> {
     const reveal = l.phase === 'review' || l.phase === 'results';
     const q = l.currentIndex >= 0 ? l.questions[l.currentIndex] : null;
     const h = q ? getType(q.type) : undefined;
@@ -694,7 +1120,7 @@ export class LobbyManager {
       answers = last.map((a) => ({ userId: a.userId, points: a.points, summary: h!.summary(a.payload as never, q) }));
     }
 
-    return {
+    const common = {
       code: l.code,
       hostId: l.hostId,
       phase: l.phase,
@@ -717,6 +1143,26 @@ export class LobbyManager {
       answers,
       results: l.phase === 'results' ? l.resultsPayload : undefined,
     };
+
+    const g = l.game;
+    if (g?.kind === 'guesswho') {
+      const secret = this.getGuessWhoSecret(l, forUserId);
+      return {
+        ...common,
+        guessWho: {
+          grid: this.getGuessWhoGrid(l),
+          secret,
+          mine: this.getGuessWhoMine(l, forUserId),
+        },
+      };
+    }
+    if (g?.kind === 'auction') {
+      return {
+        ...common,
+        auction: this.getAuctionView(l, forUserId),
+      };
+    }
+    return common;
   }
 
   private sweep() {
@@ -740,4 +1186,31 @@ function standings0(i: number, sorted: { score: number }[]): number {
   let p = i;
   while (p > 0 && sorted[p - 1].score === sorted[i].score) p--;
   return p + 1;
+}
+
+function pickUniquePlayers(pool: PoolPlayer[], count: number): PoolPlayer[] {
+  const picked: PoolPlayer[] = [];
+  const seen = new Set<number>();
+  let guard = 0;
+  while (picked.length < count && guard < 5000) {
+    guard++;
+    const p = pool[randomInt(pool.length)];
+    if (!p || seen.has(p.id)) continue;
+    seen.add(p.id);
+    picked.push(p);
+  }
+  return picked;
+}
+
+function pickSecretTarget(pool: PoolPlayer[], existing: Map<number, number>): PoolPlayer {
+  const used = new Set(existing.values());
+  let guard = 0;
+  while (guard < 5000) {
+    guard++;
+    const p = pool[randomInt(pool.length)];
+    if (!p || used.has(p.id)) continue;
+    used.add(p.id);
+    return p;
+  }
+  return pool[0];
 }

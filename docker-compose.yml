@@ -25,6 +25,7 @@ services:
     volumes:
       - ./seed:/seed:ro
       - ./db:/app/db:ro
+      - ./Database:/app/database:ro
     depends_on:
       db:
         condition: service_healthy

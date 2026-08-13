@@ -16,6 +16,10 @@ interface SocketCtx {
   start: () => Promise<void>;
   answer: (stage: string, payload: unknown) => Promise<void>;
   submitJudgments: (judgments: { userId: number; points: number }[]) => Promise<void>;
+  guess: (playerId: number) => Promise<void>;
+  bid: (amount: number) => Promise<void>;
+  reveal: () => Promise<void>;
+  nextSlot: () => Promise<void>;
   clearToast: () => void;
 }
 
@@ -93,6 +97,18 @@ export function SocketProvider({ children }: { children: ReactNode }) {
     },
     submitJudgments: async (judgments) => {
       await emit('lobby:judge', judgments);
+    },
+    guess: async (playerId) => {
+      await emit('lobby:guess', playerId);
+    },
+    bid: async (amount) => {
+      await emit('lobby:bid', amount);
+    },
+    reveal: async () => {
+      await emit('lobby:reveal');
+    },
+    nextSlot: async () => {
+      await emit('lobby:nextSlot');
     },
   };
 

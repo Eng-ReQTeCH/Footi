@@ -7,14 +7,17 @@ import { sessionMiddleware, setupAuth } from './auth';
 import { setupRoutes } from './routes';
 import { LobbyManager } from './lobbies';
 import { setupSockets } from './socket';
+import { loadPlayerData } from './players';
 
 async function main() {
   await runMigrations();
+  const playerData = await loadPlayerData();
+  console.log(`player pool ready: ${playerData.players.length} players, ${playerData.managers.length} managers`);
   const app = express();
   const http = createServer(app);
   const io = new Server(http, { path: '/socket.io' });
   io.engine.use(sessionMiddleware);
-  const manager = new LobbyManager(io, pool);
+  const manager = new LobbyManager(io, pool, playerData);
   setupAuth(app);
   setupRoutes(app);
   setupSockets(io, manager);

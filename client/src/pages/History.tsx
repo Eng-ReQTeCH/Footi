@@ -49,6 +49,7 @@ export default function History() {
       <AppHeader connected={connected} />
       {matches.map((m) => {
         const isTeams = m.mode === 'teams';
+        const modeLabel = m.mode === 'guesswho' ? 'Guess Who' : m.mode === 'auction' ? 'Auction' : isTeams ? 'Teams' : 'Free for all';
         const rows = [...m.players].sort((a, b) => (a.place ?? 99) - (b.place ?? 99));
         const byTeam = new Map<string, HistoryMatch['players']>();
         for (const p of rows) {
@@ -60,7 +61,7 @@ export default function History() {
           <div key={m.id} className="glass-card p-4">
             <div className="flex items-center justify-between text-xs font-bold text-slate-500">
               <span className="rounded-full bg-pitch-800 px-2.5 py-1 uppercase tracking-wide">
-                {isTeams ? 'Teams' : 'Free for all'} · code {m.lobbyCode}
+                {modeLabel} · code {m.lobbyCode}
               </span>
               <span>{dateFmt(m.finishedAt)}</span>
             </div>

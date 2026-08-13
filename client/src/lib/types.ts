@@ -1,9 +1,11 @@
 export type Mode = 'ffa' | 'teams';
 export type Difficulty = 'easy' | 'medium' | 'hard';
-export type Phase = 'lobby' | 'starting' | 'playing' | 'judging' | 'review' | 'results';
+export type GameType = 'trivia' | 'guesswho' | 'auction';
+export type Phase = 'lobby' | 'starting' | 'playing' | 'judging' | 'review' | 'results' | 'guesswho' | 'auction_bid' | 'auction_reveal';
 export type Stage = 'question' | 'action';
 
 export interface Settings {
+  gameType: GameType;
   questionCount: number;
   secondsPerQuestion: number;
   pauseSeconds: number;
@@ -11,6 +13,80 @@ export interface Settings {
   difficulties: Difficulty[];
   mode: Mode;
   teamSizes: number[];
+}
+
+export interface PoolCard {
+  id: number;
+  name: string;
+  imageUrl: string;
+  position: string;
+}
+
+export interface GuessWhoMine {
+  lives: number;
+  wrong: number[];
+  lastGuess: { guesser: number; playerId: number; correct: boolean; livesLeft: number } | null;
+  winner: number | null;
+}
+
+export interface GuessWhoState {
+  grid: PoolCard[];
+  secret: PoolCard | null;
+  mine: GuessWhoMine;
+}
+
+export interface AuctionPlayer {
+  id: number;
+  name: string;
+  imageUrl: string;
+  position: string;
+}
+
+export interface AuctionManager {
+  id: string;
+  name: string;
+  clubName: string;
+}
+
+export type AuctionOffered =
+  | { kind: 'player'; player: AuctionPlayer }
+  | { kind: 'manager'; manager: AuctionManager };
+
+export interface AuctionXI {
+  manager: AuctionManager | null;
+  gk: AuctionPlayer | null;
+  def: AuctionPlayer[];
+  mid: AuctionPlayer[];
+  att: AuctionPlayer[];
+  sub: AuctionPlayer | null;
+}
+
+export interface AuctionSlotInfo {
+  label: string;
+  position: string;
+}
+
+export interface AuctionReplacement {
+  userId: number;
+  replacement: AuctionPlayer | AuctionManager;
+}
+
+export interface AuctionResult {
+  winner: number;
+  winnerBid: number;
+  losers: AuctionReplacement[];
+}
+
+export interface AuctionState {
+  slotIndex: number;
+  slots: AuctionSlotInfo[];
+  slot: AuctionSlotInfo | null;
+  offered: AuctionOffered | null;
+  bid: number | null;
+  budget: number;
+  xi: AuctionXI;
+  result: AuctionResult | null;
+  winner: number | null;
 }
 
 export interface PublicPlayer {
@@ -33,7 +109,7 @@ export interface PublicQuestion {
 }
 
 export interface TimerInfo {
-  kind: 'start' | 'question' | 'action' | 'review';
+  kind: 'start' | 'question' | 'action' | 'review' | 'bid';
   endAt: number;
   duration: number;
 }
@@ -46,7 +122,9 @@ export interface AnswerResult {
 
 export type Results =
   | { kind: 'ffa'; standings: { userId: number; username: string; score: number; place: number }[] }
-  | { kind: 'teams'; standings: { teamIdx: number; score: number; place: number; members: { userId: number; username: string; score: number }[] }[] };
+  | { kind: 'teams'; standings: { teamIdx: number; score: number; place: number; members: { userId: number; username: string; score: number }[] }[] }
+  | { kind: 'guesswho'; standings: { userId: number; username: string; lives: number; won: boolean }[]; grid: PoolCard[] }
+  | { kind: 'auction'; standings: { userId: number; username: string; budget: number; xi: AuctionXI }[] };
 
 export interface LobbyState {
   code: string;
@@ -61,6 +139,8 @@ export interface LobbyState {
   timer?: TimerInfo;
   answers?: AnswerResult[];
   results?: Results;
+  guessWho?: GuessWhoState;
+  auction?: AuctionState;
 }
 
 export interface JudgeEntry {

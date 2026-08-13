@@ -366,7 +366,7 @@ export function TimerBar({ timer }: { timer: LobbyState['timer'] }) {
   const pct = Math.max(0, Math.min(100, ((timer.endAt - now) / timer.duration) * 100));
 
   const label =
-    timer.kind === 'start' ? 'Starting…' : timer.kind === 'question' ? 'Answer!' : timer.kind === 'action' ? 'Name them!' : 'Next up…';
+    timer.kind === 'start' ? 'Starting…' : timer.kind === 'question' ? 'Answer!' : timer.kind === 'action' ? 'Name them!' : timer.kind === 'bid' ? 'Bid now!' : 'Next up…';
 
   return (
     <div className="glass-card-sm px-4 py-3">

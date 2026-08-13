@@ -1,6 +1,8 @@
 import { useSocket } from '../lib/socket';
 import LobbyView from '../components/LobbyView';
 import GameView from '../components/GameView';
+import GuessWhoView from '../components/GuessWhoView';
+import AuctionView from '../components/AuctionView';
 import JudgeView from '../components/JudgeView';
 import ResultsView from '../components/ResultsView';
 import { useNavigate } from 'react-router-dom';
@@ -25,5 +27,7 @@ export default function Room() {
   if (state.phase === 'lobby') return <LobbyView state={state} />;
   if (state.phase === 'results') return <ResultsView state={state} />;
   if (state.phase === 'judging') return <JudgeView state={state} />;
+  if (state.phase === 'guesswho') return <GuessWhoView state={state} />;
+  if (state.phase === 'auction_bid' || state.phase === 'auction_reveal') return <AuctionView state={state} />;
   return <GameView state={state} />;
 }

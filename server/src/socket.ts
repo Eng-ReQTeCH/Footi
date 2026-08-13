@@ -109,5 +109,41 @@ export function setupSockets(io: Server, manager: LobbyManager) {
         cb?.({ ok: false, error: errOf(e) });
       }
     });
+
+    socket.on('lobby:guess', (playerId: number, cb?: Callback) => {
+      try {
+        manager.guess(socket.data.userId as number, code()!, Number(playerId));
+        cb?.({ ok: true });
+      } catch (e) {
+        cb?.({ ok: false, error: errOf(e) });
+      }
+    });
+
+    socket.on('lobby:bid', (amount: number, cb?: Callback) => {
+      try {
+        manager.bid(socket.data.userId as number, code()!, Number(amount));
+        cb?.({ ok: true });
+      } catch (e) {
+        cb?.({ ok: false, error: errOf(e) });
+      }
+    });
+
+    socket.on('lobby:reveal', (cb?: Callback) => {
+      try {
+        manager.revealAuctionByHost(socket.data.userId as number, code()!);
+        cb?.({ ok: true });
+      } catch (e) {
+        cb?.({ ok: false, error: errOf(e) });
+      }
+    });
+
+    socket.on('lobby:nextSlot', (cb?: Callback) => {
+      try {
+        manager.nextAuctionSlotByHost(socket.data.userId as number, code()!);
+        cb?.({ ok: true });
+      } catch (e) {
+        cb?.({ ok: false, error: errOf(e) });
+      }
+    });
   });
 }

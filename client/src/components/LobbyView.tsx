@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import type { LobbyState, Settings } from '../lib/types';
+import type { LobbyState, Settings, GameType } from '../lib/types';
 import { useSocket } from '../lib/socket';
 import { useUser } from '../lib/user';
 import { teamColor, cx } from '../lib/theme';
@@ -12,6 +12,11 @@ const DIFFS = ['easy', 'medium', 'hard'] as const;
 const QUESTION_COUNTS = [5, 10, 15, 20];
 const TIMES = [15, 20, 30, 45, 60];
 const PAUSES = [2, 4, 6];
+const GAME_TYPES: { value: GameType; label: string; note: string }[] = [
+  { value: 'trivia', label: 'Trivia', note: 'Classic quiz' },
+  { value: 'guesswho', label: 'انا بصفي مين فصفي', note: 'Guess Who' },
+  { value: 'auction', label: 'المزاد', note: 'Auction draft' },
+];
 
 export default function LobbyView({ state }: { state: LobbyState }) {
   const { updateSettings, start, kick, setTeam, leaveLobby, connected } = useSocket();
@@ -170,20 +175,52 @@ export default function LobbyView({ state }: { state: LobbyState }) {
         <p className="mt-0.5 text-xs text-slate-500">{isHost ? 'Changes apply live' : 'Host controls these'}</p>
 
         <div className="mt-4 space-y-4">
-          <SettingRow label="Mode">
-            <SelectToggle
-              value={settings.mode}
-              options={[
-                { value: 'ffa', label: 'Free-for-all' },
-                { value: 'teams', label: 'Teams' },
-              ]}
-              disabled={!isHost}
-              onChange={(v) =>
-                save({ ...settings, mode: v as 'ffa' | 'teams', teamSizes: v === 'teams' && settings.teamSizes.length === 0 ? [2, 2] : settings.teamSizes })
-              }
-            />
+          <SettingRow label="Game type">
+            <div className="flex flex-wrap gap-1.5">
+              {GAME_TYPES.map((g) => {
+                const on = settings.gameType === g.value;
+                return (
+                  <button
+                    key={g.value}
+                    disabled={!isHost}
+                    onClick={() =>
+                      save({
+                        ...settings,
+                        gameType: g.value,
+                        mode: g.value === 'trivia' ? settings.mode : 'ffa',
+                        teamSizes: g.value === 'trivia' ? settings.teamSizes : [],
+                      })
+                    }
+                    title={g.note}
+                    className={cx(
+                      'rounded-lg border px-3 py-2 text-center text-xs font-bold leading-tight transition',
+                      on ? 'border-purple-500 bg-purple-500/15 text-purple-300' : 'border-pitch-bright text-slate-500 disabled:opacity-50',
+                    )}
+                  >
+                    {g.label}
+                  </button>
+                );
+              })}
+            </div>
           </SettingRow>
 
+          {settings.gameType === 'trivia' && (
+            <SettingRow label="Mode">
+              <SelectToggle
+                value={settings.mode}
+                options={[
+                  { value: 'ffa', label: 'Free-for-all' },
+                  { value: 'teams', label: 'Teams' },
+                ]}
+                disabled={!isHost}
+                onChange={(v) =>
+                  save({ ...settings, mode: v as 'ffa' | 'teams', teamSizes: v === 'teams' && settings.teamSizes.length === 0 ? [2, 2] : settings.teamSizes })
+                }
+              />
+            </SettingRow>
+          )}
+
+          {settings.gameType === 'trivia' && (
           <SettingRow label="Questions">
             <SelectToggle
               value={String(settings.questionCount)}
@@ -192,7 +229,9 @@ export default function LobbyView({ state }: { state: LobbyState }) {
               onChange={(v) => save({ ...settings, questionCount: Number(v) })}
             />
           </SettingRow>
+          )}
 
+          {settings.gameType === 'trivia' && (
           <SettingRow label="Seconds per question">
             <SelectToggle
               value={String(settings.secondsPerQuestion)}
@@ -201,7 +240,9 @@ export default function LobbyView({ state }: { state: LobbyState }) {
               onChange={(v) => save({ ...settings, secondsPerQuestion: Number(v) })}
             />
           </SettingRow>
+          )}
 
+          {settings.gameType === 'trivia' && (
           <SettingRow label="Pause between">
             <SelectToggle
               value={String(settings.pauseSeconds)}
@@ -210,7 +251,9 @@ export default function LobbyView({ state }: { state: LobbyState }) {
               onChange={(v) => save({ ...settings, pauseSeconds: Number(v) })}
             />
           </SettingRow>
+          )}
 
+          {settings.gameType === 'trivia' && (
           <SettingRow label="Difficulty">
             <div className="flex flex-wrap gap-1.5">
               {DIFFS.map((d) => {
@@ -233,8 +276,9 @@ export default function LobbyView({ state }: { state: LobbyState }) {
               })}
             </div>
           </SettingRow>
+          )}
 
-          {categories.length > 0 && (
+          {settings.gameType === 'trivia' && categories.length > 0 && (
             <SettingRow label="Categories">
               <div className="flex flex-wrap gap-1.5">
                 <button
